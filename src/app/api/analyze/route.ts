@@ -9,22 +9,20 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const resumeText = body.resumeText;
+    const currentSalary = body.currentSalary || null;
 
     if (!resumeText || resumeText.trim().length < 30) {
       return NextResponse.json({ error: '이력서 내용을 입력해주세요.' }, { status: 400 });
     }
 
-    // 이력서에서 직군 추출
     const category = extractJobCategory(resumeText);
-    
-    // 해당 직군의 공고만 가져오기
-    const jobs = await crawlWantedJobs(category.tagId, 10);
+    const jobs = await crawlWantedJobs(category.tagId, 15);
 
     if (jobs.length === 0) {
       return NextResponse.json({ error: '채용 공고를 불러오는 데 실패했습니다.' }, { status: 500 });
     }
 
-    const matches = await analyzeMatches(resumeText, jobs);
+    const matches = await analyzeMatches(resumeText, jobs, currentSalary);
 
     return NextResponse.json({ success: true, matches, category: category.name });
   } catch (error) {

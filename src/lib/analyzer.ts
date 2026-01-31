@@ -564,6 +564,45 @@ ${jobsContext}
       // 점수 범위 제한
       adjustedScore = Math.max(40, Math.min(89, adjustedScore));
       
+      // 연봉 범위를 문자열로 변환
+      const salary = estimateSalaryRange(job, candidateExperience);
+      const salaryRange = `${(salary.min / 10000).toFixed(0)}만원 ~ ${(salary.max / 10000).toFixed(0)}만원`;
+      
+      // 훅 메시지 생성
+      const hookMessages = [
+        `${job.company}에서 당신을 기다리고 있어요`,
+        `이 포지션, 딱 맞는 것 같아요`,
+        `당신의 경험이 빛날 자리예요`,
+        `지금 바로 지원해보세요`,
+        `좋은 기회를 놓치지 마세요`,
+      ];
+      const hookMessage = hookMessages[Math.floor(Math.random() * hookMessages.length)];
+      
+      // 경력 경고 변환
+      let experienceWarning = null;
+      if (expMatch.status === 'underqualified') {
+        experienceWarning = {
+          type: 'significant' as const,
+          message: expMatch.message,
+        };
+      } else if (expMatch.status === 'overqualified') {
+        experienceWarning = {
+          type: 'slight' as const,
+          message: expMatch.message,
+        };
+      }
+      
+      // 매칭 이유 생성
+      const matchReasons = {
+        experience: expMatch.status === 'ideal' || expMatch.status === 'perfect' 
+          ? '경력 조건이 잘 맞아요' 
+          : expMatch.message,
+        skills: match.keyMatches.length > 0 
+          ? `${match.keyMatches.slice(0, 2).join(', ')} 등 보유 스킬이 공고와 잘 맞아요`
+          : '보유 스킬이 공고와 잘 맞아요',
+        fit: match.summary.split('.')[0] || '회원님의 경험을 살릴 수 있는 포지션이에요',
+      };
+      
       return {
         job,
         score: adjustedScore,
@@ -571,7 +610,12 @@ ${jobsContext}
         summary: match.summary,
         keyMatches: match.keyMatches,
         experienceMatch: expMatch,
-        estimatedSalary: estimateSalaryRange(job, candidateExperience),
+        estimatedSalary: salary,
+        // 프론트엔드용 추가 필드
+        salaryRange: `${(salary.min / 1000).toFixed(0)}만 ~ ${(salary.max / 1000).toFixed(0)}만원`,
+        hookMessage,
+        matchReasons,
+        experienceWarning,
       };
     });
 

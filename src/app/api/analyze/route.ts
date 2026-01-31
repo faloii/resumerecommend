@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { extractTextFromPDF } from '@/lib/pdf-parser';
 import { crawlWantedJobs } from '@/lib/crawler';
 import { analyzeMatches } from '@/lib/analyzer';
 
@@ -7,54 +6,14 @@ export const maxDuration = 60; // Vercel 함수 타임아웃 60초
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('resume') as File | null;
-    const currentSalaryStr = formData.get('currentSalary') as string | null;
-    const preferredLocationsStr = formData.get('preferredLocations') as string | null;
-    
-    // currentSalary 파싱
-    const currentSalary = currentSalaryStr ? parseInt(currentSalaryStr) : null;
-    
-    // preferredLocations 파싱
-    let preferredLocations: string[] = [];
-    if (preferredLocationsStr) {
-      try {
-        preferredLocations = JSON.parse(preferredLocationsStr);
-      } catch {
-        preferredLocations = [];
-      }
-    }
-
-    if (!file) {
-      return NextResponse.json(
-        { error: '이력서 파일이 필요합니다.' },
-        { status: 400 }
-      );
-    }
-
-    // PDF 파일 검증
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      return NextResponse.json(
-        { error: 'PDF 파일만 지원합니다.' },
-        { status: 400 }
-      );
-    }
-
-    // 파일 크기 제한 (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json(
-        { error: '파일 크기는 10MB 이하여야 합니다.' },
-        { status: 400 }
-      );
-    }
-
-    // PDF 텍스트 추출
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const resumeText = await extractTextFromPDF(buffer);
+    const body = await request.json();
+    const resumeText = body.resumeText;
+    const currentSalary = body.currentSalary || null;
+    const preferredLocations = body.preferredLocations || [];
 
     if (!resumeText || resumeText.trim().length < 50) {
       return NextResponse.json(
-        { error: '이력서에서 충분한 텍스트를 추출할 수 없습니다.' },
+        { error: '이력서 내용을 50자 이상 입력해주세요.' },
         { status: 400 }
       );
     }

@@ -21,16 +21,12 @@ export interface MatchResult {
     type: 'match' | 'slight' | 'significant';
     message: string;
   } | null;
+  locationMismatch: boolean;
 }
 
-// 직무/경력별 예상 연봉 테이블 (만원 단위)
 function estimateSalaryRange(title: string, annualFrom: number, annualTo: number): { min: number; max: number } {
-  const avgYears = (annualFrom + annualTo) / 2;
-  
-  // 기본 연봉 (신입 기준 4000만원)
   let baseSalary = 4000;
   
-  // 직무별 가중치
   const titleLower = title.toLowerCase();
   if (titleLower.includes('cto') || titleLower.includes('vp') || titleLower.includes('head')) {
     baseSalary = 8000;
@@ -44,7 +40,6 @@ function estimateSalaryRange(title: string, annualFrom: number, annualTo: number
     baseSalary = 4500;
   }
   
-  // 경력에 따른 연봉 증가 (연 5~8% 가정)
   const yearlyIncrease = baseSalary * 0.07;
   const minSalary = Math.round(baseSalary + (annualFrom * yearlyIncrease));
   const maxSalary = Math.round(baseSalary + (annualTo * yearlyIncrease));
@@ -151,6 +146,35 @@ function getExperienceWarning(userYears: number, jobFrom: number, jobTo: number)
   return null;
 }
 
+function checkLocationMismatch(jobLocation: string, preferredLocation: string | null): boolean {
+  if (!preferredLocation) return false;
+  
+  const jobLoc = jobLocation.toLowerCase();
+  const prefLoc = preferredLocation.toLowerCase();
+  
+  // 원격근무 희망 시 - 공고에 '원격', 'remote' 없으면 미스매치
+  if (prefLoc === '원격') {
+    return !jobLoc.includes('원격') && !jobLoc.includes('remote') && !jobLoc.includes('재택');
+  }
+  
+  // 지역 비교 - 공고 위치에 희망 지역이 포함되어 있으면 매치
+  if (jobLoc.includes(prefLoc)) {
+    return false;
+  }
+  
+  // 수도권 예외 처리 (서울/경기/인천)
+  const seoulMetro = ['서울', '경기', '인천'];
+  if (seoulMetro.includes(prefLoc)) {
+    for (const metro of seoulMetro) {
+      if (jobLoc.includes(metro)) {
+        return false; // 수도권 내면 OK
+      }
+    }
+  }
+  
+  return true; // 미스매치
+}
+
 function sanitizeText(text: string): string {
   if (!text) return '';
   let cleaned = text.replace(/\uFFFD/g, '');
@@ -172,20 +196,19 @@ function getExperienceMatchText(userYears: number, jobFrom: number, jobTo: numbe
 export async function analyzeMatches(
   resumeText: string,
   jobs: JobPosting[],
-  currentSalary: number | null = null
+  currentSalary: number | null = null,
+  preferredLocation: string | null = null
 ): Promise<MatchResult[]> {
   const userYears = extractYearsFromResume(resumeText);
   
-  // 연봉 필터링: 현재 연봉보다 낮은 포지션 제외
+  // 연봉 필터링
   let filteredJobs = jobs;
   if (currentSalary && currentSalary > 0) {
     filteredJobs = jobs.filter(job => {
       const estimated = estimateSalaryRange(job.title, job.annualFrom, job.annualTo);
-      // 예상 최대 연봉이 현재 연봉보다 높은 경우만 포함
       return estimated.max >= currentSalary;
     });
     
-    // 필터링 후 공고가 없으면 원본 사용
     if (filteredJobs.length === 0) {
       filteredJobs = jobs;
     }
@@ -233,8 +256,8 @@ export async function analyzeMatches(
     const fitText = sanitizeText(m.fitReason) || '회원님의 경험을 살릴 수 있는 포지션이에요';
     
     const experienceWarning = getExperienceWarning(userYears, selectedJob.annualFrom, selectedJob.annualTo);
+    const locationMismatch = checkLocationMismatch(selectedJob.location, preferredLocation);
     
-    // 예상 연봉 계산
     const salaryEstimate = estimateSalaryRange(selectedJob.title, selectedJob.annualFrom, selectedJob.annualTo);
     const salaryRangeText = formatSalaryRange(salaryEstimate.min, salaryEstimate.max);
 
@@ -251,6 +274,7 @@ export async function analyzeMatches(
         fit: fitText,
       },
       experienceWarning: experienceWarning,
+      locationMismatch: locationMismatch,
     }];
   } catch (error) {
     console.error('Analysis error:', error);

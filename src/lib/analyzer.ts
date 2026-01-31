@@ -10,6 +10,8 @@ export interface MatchResult {
   score: number;
   summary: string;
   keyMatches: string[];
+  salaryRange: string;
+  hookMessage: string;
 }
 
 export async function analyzeMatches(
@@ -18,12 +20,12 @@ export async function analyzeMatches(
 ): Promise<MatchResult[]> {
   const jobList = jobs.map((job, i) => i + ": " + job.title + " @ " + job.company).join("\n");
 
-  const prompt = "Resume:\n" + resumeText.substring(0, 2000) + "\n\nJobs:\n" + jobList + "\n\nPick the ONE best matching job. Return JSON only: {\"jobIndex\":0,\"score\":85,\"summary\":\"2 sentence reason in Korean\",\"keyMatches\":[\"match1\",\"match2\",\"match3\"]}";
+  const prompt = "Resume:\n" + resumeText.substring(0, 2000) + "\n\nJobs:\n" + jobList + "\n\nPick the ONE best matching job. Return JSON only: {\"jobIndex\":0,\"score\":85,\"summary\":\"2 sentence reason in Korean\",\"keyMatches\":[\"match1\",\"match2\",\"match3\"],\"salaryRange\":\"8,000만원 ~ 1억원\",\"hookMessage\":\"당신의 OO 경험이 빛날 자리\"}\n\nsalaryRange: estimate based on job title and Korean market (format: X,000만원 ~ X,000만원)\nhookMessage: personalized one-liner in Korean highlighting user's key strength for this job (max 20 chars)";
 
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 500,
+      max_tokens: 600,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -48,6 +50,8 @@ export async function analyzeMatches(
       score: m.score,
       summary: m.summary,
       keyMatches: m.keyMatches || [],
+      salaryRange: m.salaryRange || '6,000만원 ~ 8,000만원',
+      hookMessage: m.hookMessage || '당신에게 딱 맞는 자리',
     }];
   } catch (error) {
     console.error('Analysis error:', error);

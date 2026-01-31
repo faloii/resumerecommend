@@ -21,30 +21,61 @@ export interface MatchResult {
     type: 'match' | 'slight' | 'significant';
     message: string;
   } | null;
-  locationMismatch: boolean;
 }
 
+// 경력별 현실적인 연봉 테이블 (만원 단위, 2024 한국 IT 시장 기준)
 function estimateSalaryRange(title: string, annualFrom: number, annualTo: number): { min: number; max: number } {
-  let baseSalary = 4000;
-  
   const titleLower = title.toLowerCase();
-  if (titleLower.includes('cto') || titleLower.includes('vp') || titleLower.includes('head')) {
-    baseSalary = 8000;
-  } else if (titleLower.includes('lead') || titleLower.includes('리드') || titleLower.includes('팀장')) {
-    baseSalary = 6000;
-  } else if (titleLower.includes('senior') || titleLower.includes('시니어')) {
-    baseSalary = 5500;
-  } else if (titleLower.includes('mlops') || titleLower.includes('ai') || titleLower.includes('ml')) {
-    baseSalary = 5000;
-  } else if (titleLower.includes('backend') || titleLower.includes('백엔드') || titleLower.includes('frontend') || titleLower.includes('프론트')) {
-    baseSalary = 4500;
+  
+  // 직무 레벨 판단
+  let level: 'executive' | 'lead' | 'senior' | 'mid' | 'junior' = 'mid';
+  
+  if (titleLower.includes('cto') || titleLower.includes('cpo') || titleLower.includes('vp') || 
+      titleLower.includes('head') || titleLower.includes('이사') || titleLower.includes('본부장')) {
+    level = 'executive';
+  } else if (titleLower.includes('lead') || titleLower.includes('리드') || titleLower.includes('팀장') || 
+             titleLower.includes('매니저') || titleLower.includes('manager')) {
+    level = 'lead';
+  } else if (titleLower.includes('senior') || titleLower.includes('시니어') || annualFrom >= 7) {
+    level = 'senior';
+  } else if (annualFrom >= 3) {
+    level = 'mid';
+  } else {
+    level = 'junior';
   }
   
-  const yearlyIncrease = baseSalary * 0.07;
-  const minSalary = Math.round(baseSalary + (annualFrom * yearlyIncrease));
-  const maxSalary = Math.round(baseSalary + (annualTo * yearlyIncrease));
+  // 레벨별 연봉 범위 (현실적인 한국 IT 시장 기준)
+  const salaryTable: { [key: string]: { min: number; max: number } } = {
+    'executive': { min: 12000, max: 20000 },  // 1.2억 ~ 2억
+    'lead': { min: 8000, max: 12000 },        // 8천 ~ 1.2억
+    'senior': { min: 6000, max: 9000 },       // 6천 ~ 9천
+    'mid': { min: 4500, max: 6500 },          // 4.5천 ~ 6.5천
+    'junior': { min: 3500, max: 5000 },       // 3.5천 ~ 5천
+  };
   
-  return { min: minSalary, max: maxSalary };
+  // 경력 연차에 따른 미세 조정
+  const base = salaryTable[level];
+  const avgYears = (annualFrom + annualTo) / 2;
+  
+  // 경력 연차 보정 (연 2~3% 증가)
+  let minAdjust = 0;
+  let maxAdjust = 0;
+  
+  if (level === 'junior' && avgYears >= 2) {
+    minAdjust = 300;
+    maxAdjust = 500;
+  } else if (level === 'mid') {
+    minAdjust = (avgYears - 3) * 200;
+    maxAdjust = (avgYears - 3) * 300;
+  } else if (level === 'senior') {
+    minAdjust = (avgYears - 7) * 150;
+    maxAdjust = (avgYears - 7) * 250;
+  }
+  
+  const finalMin = Math.round((base.min + Math.max(0, minAdjust)) / 100) * 100;
+  const finalMax = Math.round((base.max + Math.max(0, maxAdjust)) / 100) * 100;
+  
+  return { min: finalMin, max: finalMax };
 }
 
 function formatSalaryRange(min: number, max: number): string {
@@ -146,35 +177,6 @@ function getExperienceWarning(userYears: number, jobFrom: number, jobTo: number)
   return null;
 }
 
-function checkLocationMismatch(jobLocation: string, preferredLocation: string | null): boolean {
-  if (!preferredLocation) return false;
-  
-  const jobLoc = jobLocation.toLowerCase();
-  const prefLoc = preferredLocation.toLowerCase();
-  
-  // 원격근무 희망 시 - 공고에 '원격', 'remote' 없으면 미스매치
-  if (prefLoc === '원격') {
-    return !jobLoc.includes('원격') && !jobLoc.includes('remote') && !jobLoc.includes('재택');
-  }
-  
-  // 지역 비교 - 공고 위치에 희망 지역이 포함되어 있으면 매치
-  if (jobLoc.includes(prefLoc)) {
-    return false;
-  }
-  
-  // 수도권 예외 처리 (서울/경기/인천)
-  const seoulMetro = ['서울', '경기', '인천'];
-  if (seoulMetro.includes(prefLoc)) {
-    for (const metro of seoulMetro) {
-      if (jobLoc.includes(metro)) {
-        return false; // 수도권 내면 OK
-      }
-    }
-  }
-  
-  return true; // 미스매치
-}
-
 function sanitizeText(text: string): string {
   if (!text) return '';
   let cleaned = text.replace(/\uFFFD/g, '');
@@ -196,12 +198,11 @@ function getExperienceMatchText(userYears: number, jobFrom: number, jobTo: numbe
 export async function analyzeMatches(
   resumeText: string,
   jobs: JobPosting[],
-  currentSalary: number | null = null,
-  preferredLocation: string | null = null
+  currentSalary: number | null = null
 ): Promise<MatchResult[]> {
   const userYears = extractYearsFromResume(resumeText);
   
-  // 연봉 필터링
+  // 연봉 필터링: 현재 연봉보다 낮은 포지션 제외
   let filteredJobs = jobs;
   if (currentSalary && currentSalary > 0) {
     filteredJobs = jobs.filter(job => {
@@ -256,7 +257,6 @@ export async function analyzeMatches(
     const fitText = sanitizeText(m.fitReason) || '회원님의 경험을 살릴 수 있는 포지션이에요';
     
     const experienceWarning = getExperienceWarning(userYears, selectedJob.annualFrom, selectedJob.annualTo);
-    const locationMismatch = checkLocationMismatch(selectedJob.location, preferredLocation);
     
     const salaryEstimate = estimateSalaryRange(selectedJob.title, selectedJob.annualFrom, selectedJob.annualTo);
     const salaryRangeText = formatSalaryRange(salaryEstimate.min, salaryEstimate.max);
@@ -274,7 +274,6 @@ export async function analyzeMatches(
         fit: fitText,
       },
       experienceWarning: experienceWarning,
-      locationMismatch: locationMismatch,
     }];
   } catch (error) {
     console.error('Analysis error:', error);

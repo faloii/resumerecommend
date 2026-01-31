@@ -190,28 +190,72 @@ function getExperienceMatchText(userYears: number, jobFrom: number, jobTo: numbe
   return '도전적인 성장 기회가 될 수 있는 포지션이에요';
 }
 
+// 근무지 매칭 함수
+function matchesLocation(jobLocation: string, preferredLocations: string[]): boolean {
+  const jobLoc = jobLocation.toLowerCase();
+  
+  for (const preferred of preferredLocations) {
+    const pref = preferred.toLowerCase();
+    
+    // 원격근무 체크
+    if (pref === '원격' && (jobLoc.includes('원격') || jobLoc.includes('remote') || jobLoc.includes('재택'))) {
+      return true;
+    }
+    
+    // 지역 매칭
+    if (jobLoc.includes(pref)) {
+      return true;
+    }
+    
+    // 서울 특별 처리
+    if (pref === '서울' && (jobLoc.includes('서울') || jobLoc.includes('seoul'))) {
+      return true;
+    }
+    
+    // 경기 특별 처리 (성남, 분당, 판교 등)
+    if (pref === '경기' && (jobLoc.includes('경기') || jobLoc.includes('성남') || jobLoc.includes('분당') || jobLoc.includes('판교') || jobLoc.includes('수원') || jobLoc.includes('용인'))) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
 export async function analyzeMatches(
   resumeText: string,
   jobs: JobPosting[],
-  currentSalary: number | null = null
+  currentSalary: number | null = null,
+  preferredLocations: string[] | null = null
 ): Promise<MatchResult[]> {
   const userYears = extractYearsFromResume(resumeText);
   
   let filteredJobs = jobs;
+  
+  // 연봉 필터링
   if (currentSalary && currentSalary > 0) {
-    filteredJobs = jobs.filter(job => {
+    filteredJobs = filteredJobs.filter(job => {
       const estimated = estimateSalaryRange(job.title, job.annualFrom, job.annualTo);
       return estimated.max >= currentSalary;
     });
-    
-    if (filteredJobs.length === 0) {
-      filteredJobs = jobs;
+  }
+  
+  // 근무지 필터링
+  if (preferredLocations && preferredLocations.length > 0) {
+    const locationFiltered = filteredJobs.filter(job => matchesLocation(job.location, preferredLocations));
+    // 필터링 결과가 있으면 사용, 없으면 원본 유지
+    if (locationFiltered.length > 0) {
+      filteredJobs = locationFiltered;
     }
+  }
+  
+  // 필터링 후 공고가 없으면 원본 사용
+  if (filteredJobs.length === 0) {
+    filteredJobs = jobs;
   }
   
   const jobList = filteredJobs.map((job, i) => {
     const expRange = job.annualFrom + '-' + job.annualTo + '년';
-    return i + ': ' + job.title + ' @ ' + job.company + ' (경력 ' + expRange + ')';
+    return i + ': ' + job.title + ' @ ' + job.company + ' (경력 ' + expRange + ', 위치: ' + job.location + ')';
   }).join('\n');
 
   const prompt = '사용자 경력: 약 ' + userYears + '년\n\n이력서:\n' + resumeText.substring(0, 2000) + '\n\n채용공고 목록:\n' + jobList + '\n\n위 이력서와 가장 잘 맞는 공고 1개를 선택하세요.\n\n반드시 아래 JSON 형식으로만 응답하세요. 한국어로만 작성:\n{"jobIndex":0,"score":75,"skillMatch":"이력서의 어떤 스킬이 공고와 맞는지 1문장","fitReason":"왜 이 회사/포지션이 적합한지 1문장","keyMatches":["매칭포인트1","매칭포인트2","매칭포인트3"],"hookMessage":"20자 이내 한줄 메시지"}\n\n점수 기준 (엄격하게 평가하세요):\n- 90~100: 스킬, 경력, 직무가 완벽히 일치할 때만\n- 80~89: 대부분 일치하고 약간의 차이만 있을 때\n- 70~79: 주요 요소는 맞지만 일부 gap이 있을 때\n- 60~69: 기본 조건은 맞지만 gap이 있을 때\n- 50~59: 맞는 부분이 있지만 gap이 클 때\n\n대부분의 매칭은 70점대여야 합니다. 90점 이상은 정말 드문 경우입니다.\n\n주의: 모든 내용은 한국어로만, 친근한 말투(~해요, ~이에요)로 작성하세요.';
@@ -241,15 +285,14 @@ export async function analyzeMatches(
 
     const selectedJob = filteredJobs[m.jobIndex];
     
-    // 경력 페널티 적용
     const penalty = calculateExperiencePenalty(userYears, selectedJob.annualFrom, selectedJob.annualTo);
     let adjustedScore = Math.max(m.score - penalty, 50);
     
     // AI가 너무 높은 점수를 주면 보정
     if (adjustedScore > 90) {
-      adjustedScore = 85 + Math.floor(Math.random() * 5); // 85~89로 제한
+      adjustedScore = 85 + Math.floor(Math.random() * 5);
     } else if (adjustedScore > 85) {
-      adjustedScore = adjustedScore - Math.floor(Math.random() * 3); // 약간 낮춤
+      adjustedScore = adjustedScore - Math.floor(Math.random() * 3);
     }
 
     const cleanedKeyMatches = (m.keyMatches || []).map((match: string) => sanitizeText(match)).filter((match: string) => match.length > 0);

@@ -12,6 +12,11 @@ export interface MatchResult {
   keyMatches: string[];
   salaryRange: string;
   hookMessage: string;
+  matchReasons: {
+    experience: string;
+    skills: string;
+    fit: string;
+  };
 }
 
 function extractYearsFromResume(resumeText: string): number {
@@ -59,20 +64,22 @@ function calculateExperiencePenalty(userYears: number, jobFrom: number, jobTo: n
   return 0;
 }
 
-// 깨진 문자 및 비한국어/영어 문자 제거
 function sanitizeText(text: string): string {
   if (!text) return '';
-  
-  // 깨진 유니코드 문자 제거 (replacement character, 잘못된 인코딩 등)
   let cleaned = text.replace(/\uFFFD/g, '');
-  
-  // 일본어, 중국어 등 비한국어 문자 제거 (한글, 영어, 숫자, 기본 문장부호만 허용)
   cleaned = cleaned.replace(/[^\uAC00-\uD7AF\u1100-\u11FF\u3130-\u318Fa-zA-Z0-9\s.,!?()~\-·:;%+]/g, '');
-  
-  // 연속된 공백 정리
   cleaned = cleaned.replace(/\s+/g, ' ').trim();
-  
   return cleaned;
+}
+
+function getExperienceMatchText(userYears: number, jobFrom: number, jobTo: number): string {
+  if (userYears >= jobFrom && userYears <= jobTo) {
+    return '회원님의 ' + userYears + '년 경력이 공고의 요구 경력(' + jobFrom + '~' + jobTo + '년)과 딱 맞아요';
+  }
+  if (userYears > jobTo) {
+    return '회원님의 풍부한 경력(' + userYears + '년)으로 리더십을 발휘할 수 있어요';
+  }
+  return '도전적인 성장 기회가 될 수 있는 포지션이에요';
 }
 
 export async function analyzeMatches(
@@ -86,7 +93,7 @@ export async function analyzeMatches(
     return i + ': ' + job.title + ' @ ' + job.company + ' (경력 ' + expRange + ')';
   }).join('\n');
 
-  const prompt = '사용자 경력: 약 ' + userYears + '년\n\n이력서:\n' + resumeText.substring(0, 2000) + '\n\n채용공고 목록:\n' + jobList + '\n\n위 이력서와 가장 잘 맞는 공고 1개를 선택하세요. 스킬과 경력 연차를 모두 고려하세요.\n\n반드시 아래 JSON 형식으로만 응답하세요. 한국어로만 작성하고, 일본어나 중국어는 절대 사용하지 마세요:\n{"jobIndex":0,"score":85,"summary":"추천 이유 2문장 (한국어)","keyMatches":["매칭포인트1","매칭포인트2","매칭포인트3"],"salaryRange":"8,000만원 ~ 1억원","hookMessage":"20자 이내 한줄 메시지"}\n\n주의: summary와 keyMatches, hookMessage는 반드시 한국어로만 작성하세요.';
+  const prompt = '사용자 경력: 약 ' + userYears + '년\n\n이력서:\n' + resumeText.substring(0, 2000) + '\n\n채용공고 목록:\n' + jobList + '\n\n위 이력서와 가장 잘 맞는 공고 1개를 선택하세요.\n\n반드시 아래 JSON 형식으로만 응답하세요. 한국어로만 작성:\n{"jobIndex":0,"score":85,"skillMatch":"이력서의 어떤 스킬이 공고와 맞는지 1문장","fitReason":"왜 이 회사/포지션이 적합한지 1문장","keyMatches":["매칭포인트1","매칭포인트2","매칭포인트3"],"salaryRange":"8,000만원 ~ 1억원","hookMessage":"20자 이내 한줄 메시지"}\n\n주의: 모든 내용은 한국어로만, 친근한 말투(~해요, ~이에요)로 작성하세요.';
 
   try {
     const response = await anthropic.messages.create({
@@ -116,16 +123,24 @@ export async function analyzeMatches(
     const penalty = calculateExperiencePenalty(userYears, selectedJob.annualFrom, selectedJob.annualTo);
     const adjustedScore = Math.max(m.score - penalty, 50);
 
-    // 모든 텍스트 필드에 대해 깨진 문자 제거
     const cleanedKeyMatches = (m.keyMatches || []).map((match: string) => sanitizeText(match)).filter((match: string) => match.length > 0);
+
+    const experienceText = getExperienceMatchText(userYears, selectedJob.annualFrom, selectedJob.annualTo);
+    const skillText = sanitizeText(m.skillMatch) || '보유 스킬이 공고 요구사항과 잘 맞아요';
+    const fitText = sanitizeText(m.fitReason) || '회원님의 경험을 살릴 수 있는 포지션이에요';
 
     return [{
       job: selectedJob,
       score: adjustedScore,
-      summary: sanitizeText(m.summary) || '이력서와 공고가 잘 매칭됩니다.',
+      summary: skillText,
       keyMatches: cleanedKeyMatches.length > 0 ? cleanedKeyMatches : ['경력 매칭', '직무 적합'],
       salaryRange: m.salaryRange || '6,000만원 ~ 8,000만원',
       hookMessage: sanitizeText(m.hookMessage) || '당신에게 딱 맞는 자리',
+      matchReasons: {
+        experience: experienceText,
+        skills: skillText,
+        fit: fitText,
+      },
     }];
   } catch (error) {
     console.error('Analysis error:', error);

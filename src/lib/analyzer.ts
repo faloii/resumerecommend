@@ -389,10 +389,38 @@ function matchesLocation(job: JobPosting, preferredLocations: string[]): boolean
   return false;
 }
 
+// 연봉 매칭 점수 계산
+function calculateSalaryMatchScore(job: JobPosting, currentSalary: number | null): number {
+  if (!currentSalary) return 0;
+  
+  // job에 연봉 정보가 있는 경우 (annualFrom, annualTo)
+  const jobMinSalary = (job as JobPosting & { annualFrom?: number }).annualFrom;
+  const jobMaxSalary = (job as JobPosting & { annualTo?: number }).annualTo;
+  
+  if (!jobMinSalary && !jobMaxSalary) return 0;
+  
+  const jobAvgSalary = jobMaxSalary ? (jobMinSalary || 0 + jobMaxSalary) / 2 : jobMinSalary || 0;
+  
+  // 현재 연봉 대비 공고 연봉 비율
+  const ratio = jobAvgSalary / currentSalary;
+  
+  // 10~30% 인상 범위면 보너스
+  if (ratio >= 1.1 && ratio <= 1.3) return 5;
+  // 현재와 비슷하면 약간의 보너스
+  if (ratio >= 0.95 && ratio < 1.1) return 2;
+  // 30% 이상 인상이면 약간의 보너스 (도전적)
+  if (ratio > 1.3 && ratio <= 1.5) return 3;
+  // 현재보다 낮으면 페널티
+  if (ratio < 0.95) return -3;
+  
+  return 0;
+}
+
 export async function analyzeMatches(
   resumeText: string,
   jobs: JobPosting[],
-  preferredLocations?: string[]
+  preferredLocations?: string[],
+  currentSalary?: number | null
 ): Promise<MatchResult[]> {
   // 근무지 필터링 적용
   let filteredJobs = jobs;
@@ -526,6 +554,11 @@ ${jobsContext}
       // 이력서 품질 보너스 (정량적 성과가 많으면 +2~5점)
       if (resumeQuality.factors.quantitativeResults >= 15) {
         adjustedScore += Math.min(Math.floor(resumeQuality.factors.quantitativeResults / 5), 5);
+      }
+      
+      // 연봉 매칭 보너스/페널티
+      if (currentSalary) {
+        adjustedScore += calculateSalaryMatchScore(job, currentSalary);
       }
       
       // 점수 범위 제한

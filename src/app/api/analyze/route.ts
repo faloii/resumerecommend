@@ -7,7 +7,7 @@ export const maxDuration = 60;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { resumeText, currentSalary } = body;
+    const { resumeText, currentSalary, preferredLocations } = body;
 
     if (!resumeText || resumeText.trim().length < 30) {
       return NextResponse.json(
@@ -27,7 +27,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Claude API로 매칭 분석
-    const matches = await analyzeMatches(resumeText, jobs, [], currentSalary);
+    const matches = await analyzeMatches(
+      resumeText, 
+      jobs, 
+      preferredLocations || [], 
+      currentSalary
+    );
 
     return NextResponse.json({
       success: true,

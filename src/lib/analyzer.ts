@@ -18,7 +18,8 @@ export async function analyzeMatches(
 ): Promise<MatchResult[]> {
   const jobsContext = jobs.map((job, index) => 
     `[공고 ${index + 1}] ID: ${job.id} | 제목: ${job.title} | 회사: ${job.company} | 위치: ${job.location} | 설명: ${job.description} | 요구사항: ${job.requirements} | 태그: ${job.tags.join(', ')}`
-  ).join('\n');
+  ).join('
+');
 
   const prompt = `당신은 채용 매칭 전문가입니다. 아래 이력서와 채용 공고들을 분석하여 매칭 결과를 JSON 형식으로 반환해주세요.
 

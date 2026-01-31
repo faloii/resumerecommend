@@ -9,8 +9,11 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('resume') as File | null;
-    const keyword = formData.get('keyword') as string | null;
+    const currentSalaryStr = formData.get('currentSalary') as string | null;
     const preferredLocationsStr = formData.get('preferredLocations') as string | null;
+    
+    // currentSalary 파싱
+    const currentSalary = currentSalaryStr ? parseInt(currentSalaryStr) : null;
     
     // preferredLocations 파싱
     let preferredLocations: string[] = [];
@@ -56,8 +59,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 원티드 공고 크롤링 (근무지 필터링 고려하여 더 많이 가져옴)
-    const jobs = await crawlWantedJobs(keyword || '', 30);
+    // 원티드 공고 크롤링
+    const jobs = await crawlWantedJobs('', 30);
 
     if (jobs.length === 0) {
       return NextResponse.json(
@@ -67,7 +70,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Claude API로 매칭 분석 (원티드 합격 요소 기반)
-    const matches = await analyzeMatches(resumeText, jobs, preferredLocations);
+    const matches = await analyzeMatches(resumeText, jobs, preferredLocations, currentSalary);
 
     return NextResponse.json({
       success: true,

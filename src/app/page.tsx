@@ -28,13 +28,14 @@ interface MatchResult {
 }
 
 function getTopPercent(score: number): number {
-  if (score >= 90) return 3;
-  if (score >= 85) return 5;
-  if (score >= 80) return 10;
-  if (score >= 75) return 15;
-  if (score >= 70) return 20;
-  if (score >= 65) return 30;
-  return 35;
+  if (score >= 88) return 5;
+  if (score >= 83) return 10;
+  if (score >= 78) return 15;
+  if (score >= 73) return 20;
+  if (score >= 68) return 25;
+  if (score >= 63) return 30;
+  if (score >= 58) return 35;
+  return 40;
 }
 
 const SALARY_OPTIONS = [
@@ -368,3 +369,4 @@ export default function Home() {
     </main>
   );
 }
+

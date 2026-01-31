@@ -3,7 +3,7 @@ import { extractTextFromPDF } from '@/lib/pdf-parser';
 import { crawlWantedJobs } from '@/lib/crawler';
 import { analyzeMatches } from '@/lib/analyzer';
 
-export const maxDuration = 60; // Vercel 함수 타임아웃 60초
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,7 +18,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // PDF 파일 검증
     if (!file.name.toLowerCase().endsWith('.pdf')) {
       return NextResponse.json(
         { error: 'PDF 파일만 지원합니다.' },
@@ -26,7 +25,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 파일 크기 제한 (10MB)
     if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json(
         { error: '파일 크기는 10MB 이하여야 합니다.' },
@@ -34,7 +32,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // PDF 텍스트 추출
     const buffer = Buffer.from(await file.arrayBuffer());
     const resumeText = await extractTextFromPDF(buffer);
 
@@ -45,8 +42,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 원티드 공고 크롤링
-    const jobs = await crawlWantedJobs(keyword || '', 30);
+    // 공고 수를 12개로 줄여서 처리 시간 단축
+    const jobs = await crawlWantedJobs(keyword || '', 12);
 
     if (jobs.length === 0) {
       return NextResponse.json(
@@ -55,7 +52,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Claude API로 매칭 분석
     const matches = await analyzeMatches(resumeText, jobs);
 
     return NextResponse.json({

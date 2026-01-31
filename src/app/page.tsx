@@ -42,7 +42,7 @@ const LOADING_MESSAGES = [
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
-  const [keyword, setKeyword] = useState('');
+  const [currentSalary, setCurrentSalary] = useState<string>('');
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
@@ -123,8 +123,8 @@ export default function Home() {
     try {
       const formData = new FormData();
       formData.append('resume', file);
-      if (keyword) {
-        formData.append('keyword', keyword);
+      if (currentSalary) {
+        formData.append('currentSalary', currentSalary);
       }
       if (selectedLocations.length > 0) {
         formData.append('preferredLocations', JSON.stringify(selectedLocations));
@@ -263,19 +263,23 @@ export default function Home() {
               )}
             </div>
 
-            {/* Keyword Input */}
+            {/* Current Salary Input */}
             <div className="mt-4">
-              <label htmlFor="keyword" className="block text-sm font-medium text-gray-700 mb-1">
-                관심 직군/키워드 (선택사항)
+              <label htmlFor="salary" className="block text-sm font-medium text-gray-700 mb-1">
+                현재 연봉 (선택사항)
               </label>
-              <input
-                id="keyword"
-                type="text"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                placeholder="예: 프론트엔드, PM, 데이터분석"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-              />
+              <div className="relative">
+                <input
+                  id="salary"
+                  type="number"
+                  value={currentSalary}
+                  onChange={(e) => setCurrentSalary(e.target.value)}
+                  placeholder="예: 5000"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none pr-12"
+                />
+                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">만원</span>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">입력 시 연봉 수준에 맞는 공고를 우선 추천합니다</p>
             </div>
 
             {/* Location Selection */}
@@ -359,7 +363,7 @@ export default function Home() {
                 onClick={() => {
                   setResults(null);
                   setFile(null);
-                  setKeyword('');
+                  setCurrentSalary('');
                   setSelectedLocations([]);
                 }}
                 className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

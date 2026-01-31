@@ -125,7 +125,7 @@ export default function Home() {
               <span className="text-white font-bold text-xl">W</span>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">WantedFit</h1>
+              <h1 className="text-xl font-bold text-gray-900">원티드핏</h1>
               <p className="text-sm text-gray-500">AI 기반 채용 공고 매칭</p>
             </div>
           </div>
@@ -387,10 +387,11 @@ export default function Home() {
             이 서비스는 원티드랩의 실험적 MVP입니다.
           </p>
           <p className="mt-1">
-            문의: WantedLab PM Team
+            문의: 원티드랩 PO팀
           </p>
         </footer>
       </div>
     </main>
   );
 }
+

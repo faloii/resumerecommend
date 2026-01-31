@@ -20,7 +20,7 @@ export async function analyzeMatches(
     return i + ": " + job.title + " @ " + job.company;
   }).join("\n");
 
-  const prompt = "Resume:\n" + resumeText.substring(0, 3000) + "\n\nJobs:\n" + jobList + "\n\nReturn JSON only: {\"matches\":[{\"jobIndex\":0,\"score\":85,\"summary\":\"why good fit\",\"keyMatches\":[\"skill1\",\"skill2\",\"skill3\"]}]} Top 10 by score desc.";
+  const prompt = "Resume:\n" + resumeText.substring(0, 3000) + "\n\nJobs:\n" + jobList + "\n\nReturn JSON only: {\"matches\":[{\"jobIndex\":0,\"score\":85,\"summary\":\"why good fit\",\"keyMatches\":[\"skill1\",\"skill2\",\"skill3\"]}]} Top 5 by score desc.";
 
   try {
     const response = await anthropic.messages.create({
@@ -51,7 +51,7 @@ export async function analyzeMatches(
         keyMatches: m.keyMatches || [],
       }));
 
-    return matchResults.sort((a, b) => b.score - a.score).slice(0, 10);
+    return matchResults.sort((a, b) => b.score - a.score).slice(0, 5);
   } catch (error) {
     console.error('Analysis error:', error);
     throw new Error('매칭 분석 중 오류가 발생했습니다.');

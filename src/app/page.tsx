@@ -16,6 +16,11 @@ interface MatchResult {
   keyMatches: string[];
   salaryRange: string;
   hookMessage: string;
+  matchReasons: {
+    experience: string;
+    skills: string;
+    fit: string;
+  };
 }
 
 function getTopPercent(score: number): number {
@@ -143,7 +148,7 @@ export default function Home() {
 
         {result && (
           <div className="space-y-6">
-            {/* 핏 메시지 - 최상단 후킹 */}
+            {/* 핏 메시지 */}
             <div className="text-center">
               <div className="inline-block bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-full text-lg font-bold shadow-lg">
                 &quot;{result.hookMessage}&quot;
@@ -151,7 +156,7 @@ export default function Home() {
             </div>
 
             <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
-              {/* 상위 % 매칭 + 연봉 */}
+              {/* 상위 % + 연봉 */}
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white">
                 <div className="flex justify-between items-center">
                   <div className="text-center flex-1">
@@ -160,7 +165,7 @@ export default function Home() {
                   </div>
                   <div className="w-px h-16 bg-white/30"></div>
                   <div className="text-center flex-1">
-                    <div className="text-sm text-blue-100 mb-1">🎯 최적 매칭</div>
+                    <div className="text-sm text-blue-100 mb-1">최적 매칭</div>
                     <div className="text-3xl font-bold">상위 {getTopPercent(result.score)}%</div>
                     <div className="mt-2 w-full bg-white/20 rounded-full h-2">
                       <div 
@@ -168,7 +173,6 @@ export default function Home() {
                         style={{ width: result.score + '%' }}
                       ></div>
                     </div>
-                    <div className="text-xs text-blue-100 mt-1">이 공고에 가장 적합한 후보입니다</div>
                   </div>
                 </div>
               </div>
@@ -191,10 +195,29 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* 원티드 추천 이유 */}
+                {/* 원티드 추천 이유 - 구조화 */}
                 <div className="bg-blue-50 rounded-xl p-6 mb-6">
-                  <p className="text-sm font-semibold text-blue-900 mb-2">원티드 추천 이유</p>
-                  <p className="text-blue-800">{result.summary}</p>
+                  <p className="text-sm font-semibold text-blue-900 mb-4">원티드 추천 이유</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-blue-700 text-xs font-bold">1</span>
+                      </div>
+                      <p className="text-blue-800">{result.matchReasons?.experience || '경력 조건이 잘 맞아요'}</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-blue-700 text-xs font-bold">2</span>
+                      </div>
+                      <p className="text-blue-800">{result.matchReasons?.skills || '보유 스킬이 공고와 잘 맞아요'}</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-blue-700 text-xs font-bold">3</span>
+                      </div>
+                      <p className="text-blue-800">{result.matchReasons?.fit || '회원님의 경험을 살릴 수 있는 포지션이에요'}</p>
+                    </div>
+                  </div>
                 </div>
 
                 {/* 매칭 포인트 */}
@@ -209,7 +232,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* CTA 버튼 */}
+                {/* CTA */}
                 <a
                   href={result.job.url}
                   target="_blank"
@@ -238,4 +261,3 @@ export default function Home() {
     </main>
   );
 }
-

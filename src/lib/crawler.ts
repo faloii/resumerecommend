@@ -19,10 +19,20 @@ export interface JobPosting {
 }
 
 export async function crawlWantedJobs(keyword: string = '', limit: number = 50): Promise<JobPosting[]> {
-  const jobs: JobPosting[] = [];
+  console.log('원티드 공고 크롤링 시작...');
   
   try {
-    // 원티드 채용 공고 목록 페이지 크롤링
+    // 1. 먼저 원티드 API로 실제 공고 가져오기 시도
+    const apiJobs = await fetchRealJobsFromAPI();
+    if (apiJobs.length >= 5) {
+      console.log(`원티드 API에서 ${apiJobs.length}개 공고 로드 성공`);
+      return apiJobs;
+    }
+    
+    // 2. API 실패 시 HTML 크롤링 시도
+    console.log('API 부족, HTML 크롤링 시도...');
+    const jobs: JobPosting[] = [];
+    
     const searchUrl = keyword 
       ? `https://www.wanted.co.kr/search?query=${encodeURIComponent(keyword)}&tab=position`
       : `https://www.wanted.co.kr/wdlist/518?country=kr&job_sort=job.latest_order&years=-1&locations=all`;
@@ -36,8 +46,8 @@ export async function crawlWantedJobs(keyword: string = '', limit: number = 50):
     });
 
     if (!response.ok) {
-      console.error('Failed to fetch wanted jobs list');
-      return getSampleJobs();
+      console.error('HTML 크롤링도 실패, 최소 샘플 사용');
+      return getMinimalSampleJobs();
     }
 
     const html = await response.text();
@@ -69,16 +79,17 @@ export async function crawlWantedJobs(keyword: string = '', limit: number = 50):
       }
     }
 
-    // 크롤링 결과가 부족하면 샘플 데이터로 보충
-    if (jobs.length < 10) {
-      const sampleJobs = getSampleJobs();
-      return [...jobs, ...sampleJobs.slice(0, 10 - jobs.length)];
+    // 크롤링 결과가 부족하면 최소 샘플 데이터로 보충
+    if (jobs.length < 5) {
+      console.log('크롤링 결과 부족, 최소 샘플로 보충');
+      const sampleJobs = getMinimalSampleJobs();
+      return [...jobs, ...sampleJobs.slice(0, Math.max(0, 5 - jobs.length))];
     }
 
     return jobs;
   } catch (error) {
     console.error('Crawling error:', error);
-    return getSampleJobs();
+    return getMinimalSampleJobs();
   }
 }
 
@@ -310,280 +321,197 @@ async function crawlJobDetail(jobId: string): Promise<JobPosting | null> {
   }
 }
 
-// 크롤링 실패 시 사용할 샘플 데이터
-function getSampleJobs(): JobPosting[] {
+// 원티드 API에서 실제 공고 가져오기
+async function fetchRealJobsFromAPI(): Promise<JobPosting[]> {
+  const jobs: JobPosting[] = [];
+  
+  // 직군별 tag_type_ids: 507(기획/경영), 518(개발), 523(디자인), 527(데이터)
+  const categories = [
+    { tagId: 507, category: '기획', roles: ['PM', 'PO', '서비스기획'] },
+    { tagId: 518, category: '개발', roles: ['백엔드', '프론트엔드', '풀스택'] },
+  ];
+  
+  for (const cat of categories) {
+    try {
+      const response = await fetch(
+        `https://www.wanted.co.kr/api/v4/jobs?country=kr&tag_type_ids=${cat.tagId}&job_sort=job.latest_order&locations=all&years=-1&limit=10`,
+        {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Accept': 'application/json',
+          },
+        }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        const apiJobs = data.data || [];
+        
+        for (const job of apiJobs.slice(0, 5)) {
+          // 경력 요구사항 파싱
+          const expText = job.position || '';
+          let reqYears = { min: 0, max: 99 };
+          
+          const expMatch = expText.match(/(\d+)년\s*(이상|~|-)?\s*(\d+)?년?/);
+          if (expMatch) {
+            reqYears.min = parseInt(expMatch[1]) || 0;
+            reqYears.max = expMatch[3] ? parseInt(expMatch[3]) : reqYears.min + 5;
+          }
+          
+          // 신입/주니어 체크
+          if (/신입|인턴|junior/i.test(expText)) {
+            reqYears = { min: 0, max: 2 };
+          }
+          // 시니어 체크
+          if (/시니어|senior|팀장|리드|head/i.test(expText)) {
+            reqYears.min = Math.max(reqYears.min, 7);
+          }
+          
+          const location = job.address?.full_location || '서울';
+          
+          jobs.push({
+            id: String(job.id),
+            title: job.position || 'Unknown',
+            company: job.company?.name || 'Unknown',
+            location: location,
+            address: location,
+            region: normalizeRegion(location),
+            description: job.position || '',
+            requirements: `경력 ${reqYears.min}년 이상`,
+            url: `https://www.wanted.co.kr/wd/${job.id}`,
+            tags: [],
+            jobCategory: cat.category,
+            jobRole: extractJobRoleFromAPI(job.position || '', cat.category),
+            experienceLevel: reqYears.min >= 7 ? '시니어' : reqYears.min >= 3 ? '미들' : '주니어',
+            requiredYears: reqYears,
+          });
+        }
+      }
+    } catch (e) {
+      console.error(`Failed to fetch ${cat.category} jobs:`, e);
+    }
+  }
+  
+  return jobs;
+}
+
+// 직무 추출 헬퍼 (API 결과용)
+function extractJobRoleFromAPI(title: string, category: string): string {
+  const lower = title.toLowerCase();
+  
+  if (category === '기획') {
+    if (/\bpo\b|product\s*owner|프로덕트\s*오너/i.test(lower)) return 'PO';
+    if (/\bpm\b|product\s*manager|프로덕트\s*매니저/i.test(lower)) return 'PM';
+    return '서비스기획';
+  }
+  
+  if (category === '개발') {
+    if (/프론트|frontend|front-end|react|vue/i.test(lower)) return '프론트엔드';
+    if (/백엔드|backend|back-end|서버|java|python|node/i.test(lower)) return '백엔드';
+    if (/풀스택|fullstack|full-stack/i.test(lower)) return '풀스택';
+    if (/ios|swift/i.test(lower)) return 'iOS';
+    if (/android|안드로이드|kotlin/i.test(lower)) return 'Android';
+    if (/devops|sre|인프라/i.test(lower)) return 'DevOps';
+    if (/ml|ai|머신러닝|데이터/i.test(lower)) return 'ML엔지니어';
+    return '백엔드';
+  }
+  
+  if (category === '디자인') {
+    if (/ux/i.test(lower)) return 'UX디자인';
+    if (/ui/i.test(lower)) return 'UI디자인';
+    return 'UX디자인';
+  }
+  
+  if (category === '데이터') {
+    if (/ml|머신러닝|딥러닝/i.test(lower)) return 'ML엔지니어';
+    return '데이터분석';
+  }
+  
+  return '기타';
+}
+
+// 폴백용 최소 샘플 데이터 (API 실패 시에만 사용)
+function getMinimalSampleJobs(): JobPosting[] {
   return [
     {
-      id: 'sample-1',
-      title: '시니어 프로덕트 매니저',
-      company: '토스',
-      location: '서울시 강남구 테헤란로',
-      address: '서울시 강남구 테헤란로 142',
+      id: '339179',
+      title: '[Product] FinTech PO (5년 이상)',
+      company: '위대한상상(요기요)',
+      location: '서울시 강남구 역삼동',
+      address: '강남구 논현로 85길 70, 7층',
       region: '서울',
-      description: '토스 앱의 핵심 금융 서비스를 기획하고 성장시킬 PM을 찾습니다.',
-      requirements: '5년 이상의 PM 경험, 데이터 기반 의사결정 능력, 금융/핀테크 도메인 이해',
-      url: 'https://www.wanted.co.kr/wd/123456',
-      tags: ['PM', '핀테크', '데이터분석'],
+      description: '핀테크 프로덕트 오너 채용',
+      requirements: 'PO 경력 5년 이상, 핀테크 도메인 이해',
+      url: 'https://www.wanted.co.kr/wd/339179',
+      tags: ['PO', '핀테크', 'Product'],
       jobCategory: '기획',
-      jobRole: 'PM',
-      experienceLevel: '시니어',
-      requiredYears: { min: 5, max: 10 },
-    },
-    {
-      id: 'sample-2',
-      title: '백엔드 개발자 (Java/Kotlin)',
-      company: '카카오',
-      location: '경기도 성남시 분당구 판교역로',
-      address: '경기도 성남시 분당구 판교역로 166',
-      region: '경기',
-      description: '카카오톡 플랫폼의 대규모 트래픽을 처리하는 백엔드 시스템 개발',
-      requirements: 'Java/Kotlin 숙련, 대용량 트래픽 처리 경험, MSA 아키텍처 이해. 경력 3년 이상',
-      url: 'https://www.wanted.co.kr/wd/234567',
-      tags: ['Java', 'Kotlin', 'MSA'],
-      jobCategory: '개발',
-      jobRole: '백엔드',
-      experienceLevel: '미들',
-      requiredYears: { min: 3, max: 7 },
-    },
-    {
-      id: 'sample-3',
-      title: '프론트엔드 개발자',
-      company: '네이버',
-      location: '경기도 성남시 분당구',
-      address: '경기도 성남시 분당구 정자일로 95',
-      region: '경기',
-      description: '네이버 메인 서비스의 사용자 경험을 개선하는 프론트엔드 개발',
-      requirements: 'React/Vue 경험, TypeScript 숙련, 웹 성능 최적화 경험. 경력 2~5년',
-      url: 'https://www.wanted.co.kr/wd/345678',
-      tags: ['React', 'TypeScript', '프론트엔드'],
-      jobCategory: '개발',
-      jobRole: '프론트엔드',
-      experienceLevel: '주니어',
-      requiredYears: { min: 2, max: 5 },
-    },
-    {
-      id: 'sample-4',
-      title: '데이터 사이언티스트',
-      company: '쿠팡',
-      location: '서울시 송파구',
-      address: '서울시 송파구 송파대로 570',
-      region: '서울',
-      description: '추천 시스템 및 개인화 알고리즘 개발',
-      requirements: 'Python, ML/DL 프레임워크, 추천 시스템 경험. 경력 3년 이상',
-      url: 'https://www.wanted.co.kr/wd/456789',
-      tags: ['ML', 'Python', '추천시스템'],
-      jobCategory: '데이터',
-      jobRole: 'ML엔지니어',
-      experienceLevel: '미들',
-      requiredYears: { min: 3, max: 8 },
-    },
-    {
-      id: 'sample-5',
-      title: 'UX 디자이너',
-      company: '배달의민족',
-      location: '서울시 송파구',
-      address: '서울시 송파구 위례성대로 2',
-      region: '서울',
-      description: '배민 앱의 사용자 경험을 설계하고 개선',
-      requirements: 'Figma 숙련, 사용자 리서치 경험, 프로토타이핑 능력. 경력 3~7년',
-      url: 'https://www.wanted.co.kr/wd/567890',
-      tags: ['UX', 'Figma', '사용자리서치'],
-      jobCategory: '디자인',
-      jobRole: 'UX디자인',
-      experienceLevel: '미들',
-      requiredYears: { min: 3, max: 7 },
-    },
-    {
-      id: 'sample-6',
-      title: '마케팅 매니저',
-      company: '당근마켓',
-      location: '서울시 서초구',
-      address: '서울시 서초구 강남대로 465',
-      region: '서울',
-      description: '그로스 마케팅 및 퍼포먼스 마케팅 전략 수립/실행',
-      requirements: 'GA/Amplitude 활용 경험, 퍼포먼스 마케팅 3년 이상',
-      url: 'https://www.wanted.co.kr/wd/678901',
-      tags: ['마케팅', '그로스', '퍼포먼스'],
-      jobCategory: '마케팅',
-      jobRole: '마케팅',
-      experienceLevel: '미들',
-      requiredYears: { min: 3, max: 7 },
-    },
-    {
-      id: 'sample-7',
-      title: 'DevOps 엔지니어',
-      company: '라인',
-      location: '경기도 성남시 분당구',
-      address: '경기도 성남시 분당구 정자일로 95',
-      region: '경기',
-      description: 'CI/CD 파이프라인 구축 및 인프라 자동화',
-      requirements: 'Kubernetes, Docker, AWS/GCP, Terraform. 경력 4년 이상',
-      url: 'https://www.wanted.co.kr/wd/789012',
-      tags: ['DevOps', 'Kubernetes', 'AWS'],
-      jobCategory: '개발',
-      jobRole: 'DevOps',
-      experienceLevel: '미들',
-      requiredYears: { min: 4, max: 10 },
-    },
-    {
-      id: 'sample-8',
-      title: 'iOS 개발자 (신입/주니어)',
-      company: '야놀자',
-      location: '서울시 강남구',
-      address: '서울시 강남구 테헤란로 108길 42',
-      region: '서울',
-      description: '야놀자 앱의 iOS 네이티브 개발',
-      requirements: 'Swift 숙련, UIKit/SwiftUI. 신입~2년차',
-      url: 'https://www.wanted.co.kr/wd/890123',
-      tags: ['iOS', 'Swift', 'SwiftUI'],
-      jobCategory: '개발',
-      jobRole: 'iOS',
-      experienceLevel: '주니어',
-      requiredYears: { min: 0, max: 2 },
-    },
-    {
-      id: 'sample-9',
-      title: 'AI/ML 엔지니어',
-      company: '하이퍼커넥트',
-      location: '서울시 서초구',
-      address: '서울시 서초구 강남대로 311',
-      region: '서울',
-      description: '실시간 영상 처리 및 AI 모델 개발',
-      requirements: 'PyTorch/TensorFlow, Computer Vision, 실시간 처리 경험. 경력 5년 이상',
-      url: 'https://www.wanted.co.kr/wd/901234',
-      tags: ['AI', 'ML', 'ComputerVision'],
-      jobCategory: '데이터',
-      jobRole: 'ML엔지니어',
+      jobRole: 'PO',
       experienceLevel: '시니어',
       requiredYears: { min: 5, max: 12 },
     },
     {
-      id: 'sample-10',
-      title: 'Head of Product (PM리드)',
-      company: '원티드랩',
-      location: '서울시 송파구',
-      address: '서울시 송파구 올림픽로 300',
+      id: '339145',
+      title: '플랫폼 기획자(PO/PM) (팀장급)',
+      company: '파메어스',
+      location: '서울시 용산구 서빙고로',
+      address: '서울 용산구 서빙고로 17, 20층',
       region: '서울',
-      description: 'AI 기반 채용 매칭 플랫폼의 프로덕트 총괄. 프로덕트 전략 수립, 팀 리딩, 로드맵 관리',
-      requirements: 'PM/PO 경험 10년 이상, 팀 리딩 경험 필수, AI/ML 도메인 이해, 데이터 기반 의사결정',
-      url: 'https://www.wanted.co.kr/wd/012345',
-      tags: ['PM', 'AI', '리드', '채용플랫폼'],
+      description: '플랫폼 PO/PM 팀장급 채용',
+      requirements: 'PM/PO 경력 7년 이상, 팀 리딩 경험',
+      url: 'https://www.wanted.co.kr/wd/339145',
+      tags: ['PM', 'PO', '팀장'],
       jobCategory: '기획',
       jobRole: 'PM',
-      experienceLevel: '시니어',
-      requiredYears: { min: 10, max: 20 },
-    },
-    {
-      id: 'sample-16',
-      title: '시니어 프로덕트 오너 (채용 도메인)',
-      company: '사람인',
-      location: '서울시 구로구',
-      address: '서울시 구로구 디지털로 300',
-      region: '서울',
-      description: '채용 플랫폼의 핵심 기능 기획 및 서비스 고도화',
-      requirements: 'PM/PO 경력 7년 이상, 채용/HR 도메인 경험 우대, 데이터 분석 역량',
-      url: 'https://www.wanted.co.kr/wd/162345',
-      tags: ['PO', '채용', '기획', 'HR테크'],
-      jobCategory: '기획',
-      jobRole: 'PO',
       experienceLevel: '시니어',
       requiredYears: { min: 7, max: 15 },
     },
     {
-      id: 'sample-17',
-      title: '프로덕트 매니저 (Growth)',
-      company: '당근마켓',
-      location: '서울시 서초구',
-      address: '서울시 서초구 강남대로 465',
+      id: '339135',
+      title: '사업기획(7년이상)',
+      company: '우아한형제들(배달의민족)',
+      location: '서울시 송파구 위례성대로',
+      address: '서울시 송파구 위례성대로2 장은빌딩',
       region: '서울',
-      description: '당근마켓 그로스 팀에서 전환율 최적화 및 리텐션 개선 담당',
-      requirements: 'PM 경력 8년 이상, Growth 전략 수립 경험, A/B 테스트 설계 및 분석 역량',
-      url: 'https://www.wanted.co.kr/wd/172345',
-      tags: ['PM', 'Growth', 'A/B테스트', '전환율'],
+      description: '배달의민족 사업기획 담당자',
+      requirements: '사업기획 경력 7년 이상',
+      url: 'https://www.wanted.co.kr/wd/339135',
+      tags: ['사업기획', '기획'],
       jobCategory: '기획',
-      jobRole: 'PM',
+      jobRole: '서비스기획',
       experienceLevel: '시니어',
-      requiredYears: { min: 8, max: 15 },
+      requiredYears: { min: 7, max: 15 },
     },
     {
-      id: 'sample-11',
-      title: 'QA 엔지니어',
-      company: '비바리퍼블리카',
-      location: '서울시 강남구',
-      address: '서울시 강남구 테헤란로 142',
+      id: '339192',
+      title: '백엔드 개발자 (3년~5년이상)',
+      company: '어글리랩',
+      location: '서울',
+      address: '서울',
       region: '서울',
-      description: '토스 서비스의 품질 보증 및 테스트 자동화',
-      requirements: '테스트 자동화 경험, Selenium/Appium, CI/CD 연동. 경력 2~5년',
-      url: 'https://www.wanted.co.kr/wd/112345',
-      tags: ['QA', '테스트자동화', 'CI/CD'],
-      jobCategory: '개발',
-      jobRole: 'QA',
-      experienceLevel: '주니어',
-      requiredYears: { min: 2, max: 5 },
-    },
-    {
-      id: 'sample-12',
-      title: '보안 엔지니어',
-      company: '삼성SDS',
-      location: '서울시 송파구',
-      address: '서울시 송파구 올림픽로 35길 125',
-      region: '서울',
-      description: '클라우드 보안 아키텍처 설계 및 보안 취약점 분석',
-      requirements: '정보보안 자격증, 클라우드 보안 경험, 취약점 분석 능력. 경력 5년 이상',
-      url: 'https://www.wanted.co.kr/wd/122345',
-      tags: ['보안', '클라우드', '취약점분석'],
-      jobCategory: '개발',
-      jobRole: '보안',
-      experienceLevel: '시니어',
-      requiredYears: { min: 5, max: 12 },
-    },
-    {
-      id: 'sample-13',
-      title: '프론트엔드 개발자 (부산)',
-      company: '부산IT기업',
-      location: '부산시 해운대구',
-      address: '부산시 해운대구 센텀동로 99',
-      region: '부산',
-      description: '부산 기반 스타트업의 웹 프론트엔드 개발',
-      requirements: 'React, TypeScript 경험. 경력 1~3년',
-      url: 'https://www.wanted.co.kr/wd/132345',
-      tags: ['React', 'TypeScript', '부산'],
-      jobCategory: '개발',
-      jobRole: '프론트엔드',
-      experienceLevel: '주니어',
-      requiredYears: { min: 1, max: 3 },
-    },
-    {
-      id: 'sample-14',
-      title: '리모트 백엔드 개발자',
-      company: '스타트업A',
-      location: '원격근무',
-      address: '원격근무 (전국 가능)',
-      region: '원격',
-      description: '100% 원격 근무 기반의 백엔드 개발',
-      requirements: 'Node.js/Python 경험, AWS 활용 능력. 경력 2년 이상',
-      url: 'https://www.wanted.co.kr/wd/142345',
-      tags: ['Node.js', 'AWS', '원격근무'],
+      description: '백엔드 개발자 채용',
+      requirements: '백엔드 개발 경력 3~5년',
+      url: 'https://www.wanted.co.kr/wd/339192',
+      tags: ['백엔드', 'Java', 'Spring'],
       jobCategory: '개발',
       jobRole: '백엔드',
-      experienceLevel: '주니어',
-      requiredYears: { min: 2, max: 5 },
+      experienceLevel: '미들',
+      requiredYears: { min: 3, max: 5 },
     },
     {
-      id: 'sample-15',
-      title: '대전 데이터 분석가',
-      company: '대전연구소',
-      location: '대전시 유성구',
-      address: '대전시 유성구 대학로 99',
-      region: '대전',
-      description: '연구 데이터 분석 및 시각화',
-      requirements: 'Python, SQL, 데이터 시각화 경험. 경력 1~3년',
-      url: 'https://www.wanted.co.kr/wd/152345',
-      tags: ['데이터분석', 'Python', '대전'],
-      jobCategory: '데이터',
-      jobRole: '데이터분석',
-      experienceLevel: '주니어',
-      requiredYears: { min: 1, max: 3 },
+      id: '339195',
+      title: 'MLOps 엔지니어',
+      company: '넥슨코리아(NEXON)',
+      location: '경기도 성남시 분당구',
+      address: '경기도 성남시 분당구',
+      region: '경기',
+      description: 'AI 솔루션 MLOps 엔지니어',
+      requirements: 'MLOps 경험, Kubernetes, Docker',
+      url: 'https://www.wanted.co.kr/wd/339195',
+      tags: ['MLOps', 'AI', 'DevOps'],
+      jobCategory: '개발',
+      jobRole: 'DevOps',
+      experienceLevel: '시니어',
+      requiredYears: { min: 5, max: 12 },
     },
   ];
 }

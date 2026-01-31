@@ -25,7 +25,6 @@ interface MatchResult {
     type: 'match' | 'slight' | 'significant';
     message: string;
   } | null;
-  locationMismatch: boolean;
 }
 
 function getTopPercent(score: number): number {
@@ -52,25 +51,18 @@ const SALARY_OPTIONS = [
   { value: 15000, label: '1억 5,000만원 이상' },
 ];
 
-const LOCATION_OPTIONS = [
-  { value: '', label: '선택 안함' },
-  { value: '서울', label: '서울' },
-  { value: '경기', label: '경기' },
-  { value: '인천', label: '인천' },
-  { value: '부산', label: '부산' },
-  { value: '대구', label: '대구' },
-  { value: '대전', label: '대전' },
-  { value: '광주', label: '광주' },
-  { value: '세종', label: '세종' },
-  { value: '제주', label: '제주' },
-  { value: '원격', label: '원격근무' },
+const LOADING_MESSAGES = [
+  '이력서를 분석하고 있어요...',
+  '적합한 공고를 찾고 있어요...',
+  '매칭 점수를 계산하고 있어요...',
+  '거의 다 됐어요!',
 ];
 
 export default function Home() {
   const [resumeText, setResumeText] = useState('');
   const [currentSalary, setCurrentSalary] = useState(0);
-  const [preferredLocation, setPreferredLocation] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState(LOADING_MESSAGES[0]);
   const [result, setResult] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -85,6 +77,14 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setLoadingMessage(LOADING_MESSAGES[0]);
+
+    // 로딩 메시지 순환
+    let messageIndex = 0;
+    const messageInterval = setInterval(() => {
+      messageIndex = (messageIndex + 1) % LOADING_MESSAGES.length;
+      setLoadingMessage(LOADING_MESSAGES[messageIndex]);
+    }, 3000);
 
     try {
       const response = await fetch('/api/analyze', {
@@ -92,8 +92,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           resumeText,
-          currentSalary: currentSalary > 0 ? currentSalary : null,
-          preferredLocation: preferredLocation || null
+          currentSalary: currentSalary > 0 ? currentSalary : null
         }),
       });
 
@@ -109,6 +108,7 @@ export default function Home() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '오류가 발생했습니다.');
     } finally {
+      clearInterval(messageInterval);
       setLoading(false);
     }
   };
@@ -130,7 +130,36 @@ export default function Home() {
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-12">
-        {!result && (
+        {/* 로딩 화면 */}
+        {loading && (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="relative w-20 h-20 mb-8">
+              <div className="absolute inset-0 rounded-full border-4 border-blue-200"></div>
+              <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-2xl">🔍</span>
+              </div>
+            </div>
+            <p className="text-xl font-semibold text-gray-800 mb-2">{loadingMessage}</p>
+            <p className="text-sm text-gray-500">최대 30초 정도 소요될 수 있어요</p>
+            
+            {/* 프로그레스 바 */}
+            <div className="w-64 mt-6 bg-gray-200 rounded-full h-1.5 overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full animate-pulse" 
+                   style={{ width: '100%', animation: 'loading 2s ease-in-out infinite' }}></div>
+            </div>
+            
+            <style jsx>{`
+              @keyframes loading {
+                0% { transform: translateX(-100%); }
+                50% { transform: translateX(0%); }
+                100% { transform: translateX(100%); }
+              }
+            `}</style>
+          </div>
+        )}
+
+        {!result && !loading && (
           <>
             <div className="text-center mb-10">
               <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -154,47 +183,25 @@ export default function Home() {
                 {resumeText.length}자 입력됨
               </p>
 
-              {/* 추가 옵션 */}
-              <div className="mt-6 p-4 bg-gray-50 rounded-xl space-y-4">
-                <p className="text-sm font-medium text-gray-700">추가 옵션 <span className="text-gray-400 font-normal">(선택)</span></p>
-                
-                {/* 현재 연봉 */}
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">
-                    현재 연봉
-                  </label>
-                  <select
-                    value={currentSalary}
-                    onChange={(e) => setCurrentSalary(Number(e.target.value))}
-                    className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-sm"
-                  >
-                    {SALARY_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-400 mt-1">입력하시면 현재 연봉 이상의 포지션만 추천해드려요</p>
-                </div>
-
-                {/* 희망 근무지 */}
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">
-                    희망 근무지
-                  </label>
-                  <select
-                    value={preferredLocation}
-                    onChange={(e) => setPreferredLocation(e.target.value)}
-                    className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-sm"
-                  >
-                    {LOCATION_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-400 mt-1">근무지가 다른 경우 안내해드려요</p>
-                </div>
+              {/* 현재 연봉 선택 */}
+              <div className="mt-6 p-4 bg-gray-50 rounded-xl">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  현재 연봉 <span className="text-gray-400 font-normal">(선택)</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-3">
+                  입력하시면 현재 연봉 이상의 포지션만 추천해드려요
+                </p>
+                <select
+                  value={currentSalary}
+                  onChange={(e) => setCurrentSalary(Number(e.target.value))}
+                  className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                >
+                  {SALARY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {error && (
@@ -212,23 +219,13 @@ export default function Home() {
                     : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
                   }`}
               >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    AI가 분석 중...
-                  </span>
-                ) : (
-                  '내 맞춤 공고 찾기'
-                )}
+                내 맞춤 공고 찾기
               </button>
             </form>
           </>
         )}
 
-        {result && (
+        {result && !loading && (
           <div className="space-y-6">
             {/* 핏 메시지 */}
             <div className="text-center">
@@ -262,7 +259,7 @@ export default function Home() {
               <div className="p-8">
                 {/* 경력 미스매치 경고 */}
                 {result.experienceWarning && (
-                  <div className={`rounded-xl p-4 mb-4 flex items-start gap-3 ${
+                  <div className={`rounded-xl p-4 mb-6 flex items-start gap-3 ${
                     result.experienceWarning.type === 'slight' 
                       ? 'bg-yellow-50 border border-yellow-200' 
                       : 'bg-orange-50 border border-orange-200'
@@ -288,18 +285,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* 근무지 미스매치 경고 */}
-                {result.locationMismatch && (
-                  <div className="rounded-xl p-4 mb-4 flex items-start gap-3 bg-purple-50 border border-purple-200">
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-purple-200">
-                      <span className="text-sm text-purple-700">📍</span>
-                    </div>
-                    <p className="text-sm text-purple-800">
-                      근무지 확인 필요 - 희망 근무지와 공고 위치가 달라요. 원격근무 여부를 확인해보세요.
-                    </p>
-                  </div>
-                )}
-
                 {/* 공고 정보 */}
                 <div className="bg-gray-50 rounded-xl p-6 mb-6">
                   <p className="text-sm text-gray-500 mb-1">추천 공고</p>
@@ -312,14 +297,7 @@ export default function Home() {
                     <div className="w-px h-10 bg-gray-300"></div>
                     <div>
                       <p className="text-sm text-gray-500">위치</p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-lg font-semibold text-gray-700">{result.job.location}</p>
-                        {result.locationMismatch && (
-                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-medium">
-                            확인 필요
-                          </span>
-                        )}
-                      </div>
+                      <p className="text-lg font-semibold text-gray-700">{result.job.location}</p>
                     </div>
                   </div>
                 </div>

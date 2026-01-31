@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     // 원티드 공고 크롤링
     let jobs;
     try {
-      jobs = await crawlWantedJobs('', 30);
+      jobs = await crawlWantedJobs(30);
     } catch (crawlError) {
       console.error('Crawl error:', crawlError);
       return NextResponse.json(

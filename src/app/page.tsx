@@ -37,8 +37,23 @@ function getTopPercent(score: number): number {
   return 35;
 }
 
+const SALARY_OPTIONS = [
+  { value: 0, label: '선택 안함' },
+  { value: 3000, label: '3,000만원' },
+  { value: 4000, label: '4,000만원' },
+  { value: 5000, label: '5,000만원' },
+  { value: 6000, label: '6,000만원' },
+  { value: 7000, label: '7,000만원' },
+  { value: 8000, label: '8,000만원' },
+  { value: 9000, label: '9,000만원' },
+  { value: 10000, label: '1억원' },
+  { value: 12000, label: '1억 2,000만원' },
+  { value: 15000, label: '1억 5,000만원 이상' },
+];
+
 export default function Home() {
   const [resumeText, setResumeText] = useState('');
+  const [currentSalary, setCurrentSalary] = useState(0);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +74,10 @@ export default function Home() {
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeText }),
+        body: JSON.stringify({ 
+          resumeText,
+          currentSalary: currentSalary > 0 ? currentSalary : null
+        }),
       });
 
       const data = await response.json();
@@ -118,6 +136,27 @@ export default function Home() {
               <p className="mt-2 text-sm text-gray-500 text-right">
                 {resumeText.length}자 입력됨
               </p>
+
+              {/* 현재 연봉 선택 */}
+              <div className="mt-6 p-4 bg-gray-50 rounded-xl">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  현재 연봉 <span className="text-gray-400 font-normal">(선택)</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-3">
+                  입력하시면 현재 연봉 이상의 포지션만 추천해드려요
+                </p>
+                <select
+                  value={currentSalary}
+                  onChange={(e) => setCurrentSalary(Number(e.target.value))}
+                  className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                >
+                  {SALARY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {error && (
                 <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">

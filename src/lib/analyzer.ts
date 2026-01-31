@@ -868,12 +868,45 @@ export async function analyzeMatches(
   const candidateExperience = candidateProfile.experienceYears;
 
   // 다차원 매칭 점수로 1차 필터링 (상위 15개)
-  const preScored = filteredJobs.map(job => ({
-    job,
-    multiScore: calculateMultiDimensionalScore(candidateProfile, job),
-  })).sort((a, b) => b.multiScore.total - a.multiScore.total);
+  const preScored = filteredJobs.map(job => {
+    const multiScore = calculateMultiDimensionalScore(candidateProfile, job);
+    const reqYears = (job as JobPosting & { requiredYears?: { min: number; max: number } }).requiredYears 
+      || extractRequiredExperience(job);
+    
+    // 심각한 오버스펙 체크 (경력 차이 5년 이상이면 매칭 제외)
+    const effectiveMax = reqYears.max > 20 ? reqYears.min + 7 : reqYears.max;
+    const isOverqualified = candidateProfile.experienceYears > effectiveMax + 5;
+    
+    // 심각한 언더스펙 체크 (요구 경력 대비 5년 이상 부족하면 매칭 제외)
+    const isUnderqualified = candidateProfile.experienceYears < reqYears.min - 3;
+    
+    return {
+      job,
+      multiScore,
+      isExcluded: isOverqualified || isUnderqualified,
+      exclusionReason: isOverqualified 
+        ? `경력 과다 (${candidateProfile.experienceYears}년 vs 요구 ${reqYears.min}~${effectiveMax}년)`
+        : isUnderqualified 
+          ? `경력 부족 (${candidateProfile.experienceYears}년 vs 요구 ${reqYears.min}년+)`
+          : null,
+    };
+  })
+  .filter(item => !item.isExcluded) // 심각한 미스매치 제외
+  .sort((a, b) => b.multiScore.total - a.multiScore.total);
   
-  const topJobs = preScored.slice(0, 15);
+  console.log(`경력 필터링 적용: ${filteredJobs.length}개 → ${preScored.length}개`);
+  
+  // 필터링 후 공고가 없으면 필터 완화
+  let topJobs = preScored.slice(0, 15);
+  if (topJobs.length === 0) {
+    console.log('경력 필터 완화: 모든 공고 포함');
+    topJobs = filteredJobs.map(job => ({
+      job,
+      multiScore: calculateMultiDimensionalScore(candidateProfile, job),
+      isExcluded: false,
+      exclusionReason: null,
+    })).sort((a, b) => b.multiScore.total - a.multiScore.total).slice(0, 15);
+  }
   
   const jobsContext = topJobs.map((item, index) => `
 [공고 ${index + 1}]
@@ -1021,9 +1054,8 @@ ${jobsContext}
       // 점수 범위 제한
       adjustedScore = Math.max(40, Math.min(89, adjustedScore));
       
-      // 연봉 범위를 문자열로 변환
+      // 연봉 범위를 문자열로 변환 (salaryTable은 만원 단위)
       const salary = estimateSalaryRange(job, candidateExperience);
-      const salaryRange = `${(salary.min / 10000).toFixed(0)}만원 ~ ${(salary.max / 10000).toFixed(0)}만원`;
       
       // 훅 메시지 생성
       const hookMessages = [
@@ -1065,8 +1097,8 @@ ${jobsContext}
         keyMatches: match.keyMatches,
         experienceMatch: expMatch,
         estimatedSalary: salary,
-        // 프론트엔드용 추가 필드
-        salaryRange: `${(salary.min / 1000).toFixed(0)}만 ~ ${(salary.max / 1000).toFixed(0)}만원`,
+        // 프론트엔드용 추가 필드 (salary는 만원 단위)
+        salaryRange: `${salary.min}만 ~ ${salary.max}만원`,
         hookMessage,
         matchReasons,
         experienceWarning,

@@ -50,6 +50,28 @@ const SALARY_OPTIONS = [
   { value: 10000, label: '1억원' },
   { value: 12000, label: '1억 2,000만원' },
   { value: 15000, label: '1억 5,000만원 이상' },
+  { value: -1, label: '직접 입력' },
+];
+
+const LOCATION_OPTIONS = [
+  { value: '서울', label: '서울' },
+  { value: '경기', label: '경기' },
+  { value: '인천', label: '인천' },
+  { value: '부산', label: '부산' },
+  { value: '대구', label: '대구' },
+  { value: '대전', label: '대전' },
+  { value: '광주', label: '광주' },
+  { value: '세종', label: '세종' },
+  { value: '울산', label: '울산' },
+  { value: '강원', label: '강원' },
+  { value: '충북', label: '충북' },
+  { value: '충남', label: '충남' },
+  { value: '전북', label: '전북' },
+  { value: '전남', label: '전남' },
+  { value: '경북', label: '경북' },
+  { value: '경남', label: '경남' },
+  { value: '제주', label: '제주' },
+  { value: '원격', label: '원격근무' },
 ];
 
 const LOADING_MESSAGES = [
@@ -61,7 +83,9 @@ const LOADING_MESSAGES = [
 
 export default function Home() {
   const [resumeText, setResumeText] = useState('');
-  const [currentSalary, setCurrentSalary] = useState(0);
+  const [salaryOption, setSalaryOption] = useState(0);
+  const [customSalary, setCustomSalary] = useState('');
+  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [result, setResult] = useState<MatchResult | null>(null);
@@ -75,12 +99,30 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [loading]);
 
+  const getCurrentSalary = (): number | null => {
+    if (salaryOption === -1) {
+      const parsed = parseInt(customSalary.replace(/,/g, ''), 10);
+      return isNaN(parsed) ? null : parsed;
+    }
+    return salaryOption > 0 ? salaryOption : null;
+  };
+
+  const toggleLocation = (location: string) => {
+    setSelectedLocations(prev => 
+      prev.includes(location) 
+        ? prev.filter(l => l !== location)
+        : [...prev, location]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (resumeText.trim().length < 30) {
       setError('이력서 내용을 30자 이상 입력해주세요.');
       return;
     }
+
     setLoading(true);
     setError(null);
     setResult(null);
@@ -92,13 +134,17 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           resumeText,
-          currentSalary: currentSalary > 0 ? currentSalary : null
+          currentSalary: getCurrentSalary(),
+          preferredLocations: selectedLocations.length > 0 ? selectedLocations : null
         }),
       });
+
       const data = await response.json();
+
       if (!response.ok) {
         throw new Error(data.error || '분석 중 오류가 발생했습니다.');
       }
+
       if (data.matches && data.matches.length > 0) {
         setResult(data.matches[0]);
       }
@@ -107,6 +153,14 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const formatSalaryInput = (value: string) => {
+    const numbers = value.replace(/[^0-9]/g, '');
+    if (numbers) {
+      return parseInt(numbers, 10).toLocaleString();
+    }
+    return '';
   };
 
   const getWarningStyle = (type: string) => {
@@ -181,8 +235,8 @@ export default function Home() {
                   입력하시면 현재 연봉 이상의 포지션만 추천해드려요
                 </p>
                 <select
-                  value={currentSalary}
-                  onChange={(e) => setCurrentSalary(Number(e.target.value))}
+                  value={salaryOption}
+                  onChange={(e) => setSalaryOption(Number(e.target.value))}
                   className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
                   disabled={loading}
                 >
@@ -192,6 +246,52 @@ export default function Home() {
                     </option>
                   ))}
                 </select>
+                
+                {salaryOption === -1 && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={customSalary}
+                      onChange={(e) => setCustomSalary(formatSalaryInput(e.target.value))}
+                      placeholder="예: 7,500"
+                      className="flex-1 p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                      disabled={loading}
+                    />
+                    <span className="text-gray-600 font-medium">만원</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-4 p-4 bg-gray-50 rounded-xl">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  희망 근무지 <span className="text-gray-400 font-normal">(선택, 복수 선택 가능)</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-3">
+                  선택하시면 해당 지역의 공고만 추천해드려요
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {LOCATION_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => toggleLocation(option.value)}
+                      disabled={loading}
+                      className={[
+                        'px-3 py-1.5 rounded-full text-sm font-medium transition-all',
+                        selectedLocations.includes(option.value)
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white border border-gray-200 text-gray-600 hover:border-blue-300 hover:text-blue-600'
+                      ].join(' ')}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                {selectedLocations.length > 0 && (
+                  <p className="mt-2 text-xs text-blue-600">
+                    선택: {selectedLocations.join(', ')}
+                  </p>
+                )}
               </div>
 
               {error && (
@@ -346,7 +446,7 @@ export default function Home() {
             </div>
 
             <button
-              onClick={() => { setResult(null); setResumeText(''); setCurrentSalary(0); }}
+              onClick={() => { setResult(null); setResumeText(''); setSalaryOption(0); setCustomSalary(''); setSelectedLocations([]); }}
               className="w-full py-3 text-gray-600 hover:text-gray-900"
             >
               다시 분석하기

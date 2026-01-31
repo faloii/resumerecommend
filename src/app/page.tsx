@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 
 interface MatchResult {
   job: {
@@ -8,9 +8,7 @@ interface MatchResult {
     title: string;
     company: string;
     location: string;
-    description: string;
     url: string;
-    tags: string[];
   };
   score: number;
   summary: string;
@@ -18,55 +16,16 @@ interface MatchResult {
 }
 
 export default function Home() {
-  const [file, setFile] = useState<File | null>(null);
+  const [resumeText, setResumeText] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [dragActive, setDragActive] = useState(false);
-
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.name.toLowerCase().endsWith('.pdf')) {
-        setFile(droppedFile);
-        setError(null);
-      } else {
-        setError('PDF 파일만 업로드 가능합니다.');
-      }
-    }
-  }, []);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      if (selectedFile.name.toLowerCase().endsWith('.pdf')) {
-        setFile(selectedFile);
-        setError(null);
-      } else {
-        setError('PDF 파일만 업로드 가능합니다.');
-      }
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!file) {
-      setError('이력서 파일을 업로드해주세요.');
+    if (resumeText.trim().length < 30) {
+      setError('이력서 내용을 30자 이상 입력해주세요.');
       return;
     }
 
@@ -75,21 +34,13 @@ export default function Home() {
     setResult(null);
 
     try {
-      const formData = new FormData();
-      formData.append('resume', file);
-
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeText }),
       });
 
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        throw new Error('서버 응답 오류. 잠시 후 다시 시도해주세요.');
-      }
+      const data = await response.json();
 
       if (!response.ok) {
         throw new Error(data.error || '분석 중 오류가 발생했습니다.');
@@ -99,7 +50,7 @@ export default function Home() {
         setResult(data.matches[0]);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
+      setError(err instanceof Error ? err.message : '오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
@@ -130,61 +81,21 @@ export default function Home() {
                 <span className="text-blue-600">단 하나의</span> 맞춤 공고
               </h2>
               <p className="text-lg text-gray-600">
-                이력서를 업로드하면 AI가 가장 적합한 공고를 찾아드립니다.
+                이력서 내용을 붙여넣으면 AI가 가장 적합한 공고를 찾아드립니다.
               </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="max-w-md mx-auto">
-              <div 
-                className={`border-2 border-dashed rounded-2xl p-10 text-center transition-all cursor-pointer
-                  ${dragActive 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : file 
-                      ? 'border-green-500 bg-green-50' 
-                      : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
-                  }`}
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-                onClick={() => document.getElementById('file-input')?.click()}
-              >
-                <input
-                  id="file-input"
-                  type="file"
-                  accept=".pdf"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                
-                {file ? (
-                  <div className="space-y-3">
-                    <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
-                      <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                      </svg>
-                    </div>
-                    <p className="font-semibold text-gray-900">{file.name}</p>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setFile(null); }}
-                      className="text-sm text-red-600 hover:text-red-700"
-                    >
-                      파일 제거
-                    </button>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
-                      <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                      </svg>
-                    </div>
-                    <p className="font-medium text-gray-900">PDF 이력서 업로드</p>
-                    <p className="text-sm text-gray-500">클릭 또는 드래그</p>
-                  </div>
-                )}
-              </div>
+            <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
+              <textarea
+                value={resumeText}
+                onChange={(e) => setResumeText(e.target.value)}
+                placeholder="이력서 내용을 붙여넣기 해주세요.&#10;&#10;예시:&#10;- 경력: 프론트엔드 개발자 3년&#10;- 기술: React, TypeScript, Next.js&#10;- 학력: 컴퓨터공학 전공"
+                className="w-full h-64 p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none resize-none text-gray-800"
+              />
+              
+              <p className="mt-2 text-sm text-gray-500 text-right">
+                {resumeText.length}자 입력됨
+              </p>
 
               {error && (
                 <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
@@ -194,11 +105,11 @@ export default function Home() {
 
               <button
                 type="submit"
-                disabled={!file || loading}
+                disabled={resumeText.trim().length < 30 || loading}
                 className={`w-full mt-6 py-4 rounded-xl font-bold text-lg transition-all
-                  ${!file || loading
+                  ${resumeText.trim().length < 30 || loading
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg hover:shadow-xl'
+                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
                   }`}
               >
                 {loading ? (
@@ -221,24 +132,18 @@ export default function Home() {
           <div className="space-y-8">
             <div className="text-center">
               <p className="text-blue-600 font-semibold mb-2">AI 분석 완료</p>
-              <h2 className="text-3xl font-bold text-gray-900">
-                당신을 위한 맞춤 공고
-              </h2>
+              <h2 className="text-3xl font-bold text-gray-900">당신을 위한 맞춤 공고</h2>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+            <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white text-center">
                 <div className="text-6xl font-bold mb-2">{result.score}</div>
                 <div className="text-blue-100">매칭 점수</div>
               </div>
               
               <div className="p-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">
-                  {result.job.title}
-                </h3>
-                <p className="text-lg text-gray-600 mb-6">
-                  {result.job.company} · {result.job.location}
-                </p>
+                <h3 className="text-2xl font-bold text-gray-900 mb-2">{result.job.title}</h3>
+                <p className="text-lg text-gray-600 mb-6">{result.job.company} · {result.job.location}</p>
 
                 <div className="bg-blue-50 rounded-xl p-6 mb-6">
                   <p className="text-sm font-semibold text-blue-900 mb-2">AI 추천 이유</p>
@@ -247,10 +152,7 @@ export default function Home() {
 
                 <div className="flex flex-wrap gap-2 mb-8">
                   {result.keyMatches.map((match, i) => (
-                    <span
-                      key={i}
-                      className="px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-200 text-sm"
-                    >
+                    <span key={i} className="px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-200 text-sm">
                       {match}
                     </span>
                   ))}
@@ -260,7 +162,7 @@ export default function Home() {
                   href={result.job.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block w-full py-4 bg-blue-600 text-white text-center font-bold rounded-xl hover:bg-blue-700 transition-colors"
+                  className="block w-full py-4 bg-blue-600 text-white text-center font-bold rounded-xl hover:bg-blue-700"
                 >
                   공고 보러가기
                 </a>
@@ -268,8 +170,8 @@ export default function Home() {
             </div>
 
             <button
-              onClick={() => { setResult(null); setFile(null); }}
-              className="w-full py-3 text-gray-600 hover:text-gray-900 transition-colors"
+              onClick={() => { setResult(null); setResumeText(''); }}
+              className="w-full py-3 text-gray-600 hover:text-gray-900"
             >
               다시 분석하기
             </button>

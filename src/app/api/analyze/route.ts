@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { crawlWantedJobs } from '@/lib/crawler';
 import { analyzeMatches } from '@/lib/analyzer';
+import { extractJobCategory } from '@/lib/job-category';
 
 export const maxDuration = 60;
 
@@ -13,7 +14,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '이력서 내용을 입력해주세요.' }, { status: 400 });
     }
 
-    const jobs = await crawlWantedJobs('', 6);
+    // 이력서에서 직군 추출
+    const category = extractJobCategory(resumeText);
+    
+    // 해당 직군의 공고만 가져오기
+    const jobs = await crawlWantedJobs(category.tagId, 10);
 
     if (jobs.length === 0) {
       return NextResponse.json({ error: '채용 공고를 불러오는 데 실패했습니다.' }, { status: 500 });
@@ -21,7 +26,7 @@ export async function POST(request: NextRequest) {
 
     const matches = await analyzeMatches(resumeText, jobs);
 
-    return NextResponse.json({ success: true, matches });
+    return NextResponse.json({ success: true, matches, category: category.name });
   } catch (error) {
     console.error('API Error:', error);
     return NextResponse.json(

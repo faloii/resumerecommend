@@ -11,15 +11,25 @@ export interface JobPosting {
 
 export async function crawlWantedJobs(keyword: string = '', limit: number = 6): Promise<JobPosting[]> {
   try {
-    const response = await fetch(
-      'https://www.wanted.co.kr/api/v4/jobs?country=kr&tag_type_ids=518&job_sort=job.latest_order&years=-1&locations=all&limit=' + limit,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-          'Accept': 'application/json',
-        },
-      }
-    );
+    // 랜덤 오프셋으로 다양한 공고 가져오기
+    const randomOffset = Math.floor(Math.random() * 50);
+    
+    // 여러 정렬 방식 중 랜덤 선택
+    const sortOptions = ['job.latest_order', 'job.popularity_order', 'job.compensation_order'];
+    const randomSort = sortOptions[Math.floor(Math.random() * sortOptions.length)];
+    
+    // 여러 직군 태그 중 랜덤 선택 (개발, 경영/비즈니스, 마케팅, 디자인)
+    const tagOptions = ['518', '507', '517', '516'];
+    const randomTag = tagOptions[Math.floor(Math.random() * tagOptions.length)];
+    
+    const url = 'https://www.wanted.co.kr/api/v4/jobs?country=kr&tag_type_ids=' + randomTag + '&job_sort=' + randomSort + '&years=-1&locations=all&limit=20&offset=' + randomOffset;
+    
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        'Accept': 'application/json',
+      },
+    });
 
     if (!response.ok) {
       console.error('Wanted API failed, status:', response.status);
@@ -32,7 +42,10 @@ export async function crawlWantedJobs(keyword: string = '', limit: number = 6): 
       return getActiveJobs();
     }
 
-    const jobs: JobPosting[] = data.data.slice(0, limit).map((job: {
+    // 가져온 공고 중 랜덤으로 섞어서 선택
+    const shuffled = data.data.sort(() => Math.random() - 0.5);
+    
+    const jobs: JobPosting[] = shuffled.slice(0, limit).map((job: {
       id: number;
       position: string;
       company: { name: string };
@@ -62,7 +75,8 @@ export async function crawlWantedJobs(keyword: string = '', limit: number = 6): 
 }
 
 function getActiveJobs(): JobPosting[] {
-  return [
+  // 랜덤으로 섞어서 반환
+  const jobs = [
     {
       id: '250117',
       title: 'Frontend Developer',
@@ -123,5 +137,27 @@ function getActiveJobs(): JobPosting[] {
       url: 'https://www.wanted.co.kr/company/5932',
       tags: ['iOS', 'Swift', 'Mobile'],
     },
+    {
+      id: '250123',
+      title: 'Marketing Manager',
+      company: '배달의민족',
+      location: '서울 송파구',
+      description: '디지털 마케팅 전략 수립',
+      requirements: '마케팅 경력 3년 이상',
+      url: 'https://www.wanted.co.kr/company/5932',
+      tags: ['Marketing', 'Digital'],
+    },
+    {
+      id: '250124',
+      title: 'UX Designer',
+      company: '리디',
+      location: '서울 강남구',
+      description: 'UX/UI 디자인',
+      requirements: 'Figma 능숙',
+      url: 'https://www.wanted.co.kr/company/5932',
+      tags: ['UX', 'Design', 'Figma'],
+    },
   ];
+  
+  return jobs.sort(() => Math.random() - 0.5).slice(0, 6);
 }

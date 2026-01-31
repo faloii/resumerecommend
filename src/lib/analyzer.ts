@@ -17,6 +17,10 @@ export interface MatchResult {
     skills: string;
     fit: string;
   };
+  experienceWarning: {
+    type: 'match' | 'slight' | 'significant';
+    message: string;
+  } | null;
 }
 
 function extractYearsFromResume(resumeText: string): number {
@@ -62,6 +66,47 @@ function calculateExperiencePenalty(userYears: number, jobFrom: number, jobTo: n
   }
   
   return 0;
+}
+
+function getExperienceWarning(userYears: number, jobFrom: number, jobTo: number): { type: 'match' | 'slight' | 'significant'; message: string } | null {
+  // 경력 범위 내면 경고 없음
+  if (userYears >= jobFrom && userYears <= jobTo) {
+    return null;
+  }
+  
+  // 경력 부족
+  if (userYears < jobFrom) {
+    const diff = jobFrom - userYears;
+    if (diff <= 1) {
+      return {
+        type: 'slight',
+        message: '요구 경력보다 ' + diff + '년 부족하지만, 역량이 충분하다면 도전해보세요!'
+      };
+    } else {
+      return {
+        type: 'significant',
+        message: '요구 경력보다 ' + diff + '년 부족해요. 포지션 상세 정보를 확인하고 신중히 고려해보세요.'
+      };
+    }
+  }
+  
+  // 경력 초과 (오버스펙)
+  if (userYears > jobTo) {
+    const diff = userYears - jobTo;
+    if (diff <= 1) {
+      return {
+        type: 'slight',
+        message: '요구 경력보다 ' + diff + '년 많지만, 새로운 도전을 원한다면 시도해보세요!'
+      };
+    } else {
+      return {
+        type: 'significant',
+        message: '요구 경력보다 ' + diff + '년 많아요. 시니어/리드급 포지션인지 확인해보세요.'
+      };
+    }
+  }
+  
+  return null;
 }
 
 function sanitizeText(text: string): string {
@@ -128,6 +173,8 @@ export async function analyzeMatches(
     const experienceText = getExperienceMatchText(userYears, selectedJob.annualFrom, selectedJob.annualTo);
     const skillText = sanitizeText(m.skillMatch) || '보유 스킬이 공고 요구사항과 잘 맞아요';
     const fitText = sanitizeText(m.fitReason) || '회원님의 경험을 살릴 수 있는 포지션이에요';
+    
+    const experienceWarning = getExperienceWarning(userYears, selectedJob.annualFrom, selectedJob.annualTo);
 
     return [{
       job: selectedJob,
@@ -141,6 +188,7 @@ export async function analyzeMatches(
         skills: skillText,
         fit: fitText,
       },
+      experienceWarning: experienceWarning,
     }];
   } catch (error) {
     console.error('Analysis error:', error);

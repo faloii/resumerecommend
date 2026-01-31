@@ -21,71 +21,100 @@ export async function crawlWantedJobs(keyword: string = '', limit: number = 50):
   
   const jobs: JobPosting[] = [];
   
-  // 전체 직군별 tag_type_ids
-  const categories = [
-    { tagId: 507, category: '기획' },
-    { tagId: 518, category: '개발' },
-    { tagId: 523, category: '디자인' },
-    { tagId: 527, category: '데이터' },
-    { tagId: 526, category: '마케팅' },
-  ];
-  
-  for (const cat of categories) {
-    try {
-      const response = await fetch(
-        `https://www.wanted.co.kr/api/v4/jobs?country=kr&tag_type_ids=${cat.tagId}&job_sort=job.latest_order&locations=all&years=-1&limit=10`,
-        {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-            'Accept': 'application/json',
-          },
-        }
-      );
-      
-      if (!response.ok) {
-        console.error(`API 호출 실패 (${cat.category}): ${response.status}`);
-        continue;
+  try {
+    // 원티드 전체 채용 공고 (직군 필터 없이)
+    const response = await fetch(
+      `https://www.wanted.co.kr/api/v4/jobs?country=kr&job_sort=job.latest_order&years=-1&limit=${limit}`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+          'Accept': 'application/json',
+        },
       }
-      
-      const data = await response.json();
-      const apiJobs = data.data || [];
-      
-      for (const job of apiJobs) {
-        const title = job.position || '';
-        const reqYears = parseExperience(title);
-        const location = job.address?.full_location || '서울';
-        
-        jobs.push({
-          id: String(job.id),
-          title: title,
-          company: job.company?.name || 'Unknown',
-          location: location,
-          address: location,
-          region: normalizeRegion(location),
-          description: title,
-          requirements: `경력 ${reqYears.min}년 이상`,
-          url: `https://www.wanted.co.kr/wd/${job.id}`,
-          tags: [],
-          jobCategory: cat.category,
-          jobRole: extractJobRole(title, cat.category),
-          experienceLevel: reqYears.min >= 7 ? '시니어' : reqYears.min >= 3 ? '미들' : '주니어',
-          requiredYears: reqYears,
-        });
-      }
-      
-      console.log(`${cat.category}: ${apiJobs.length}개 로드`);
-      
-    } catch (e) {
-      console.error(`API 호출 에러 (${cat.category}):`, e);
+    );
+    
+    if (!response.ok) {
+      console.error(`API 호출 실패: ${response.status}`);
+      throw new Error('API_CALL_FAILED');
     }
+    
+    const data = await response.json();
+    const apiJobs = data.data || [];
+    
+    for (const job of apiJobs) {
+      const title = job.position || '';
+      const reqYears = parseExperience(title);
+      const location = job.address?.full_location || '서울';
+      
+      // category_tags에서 직군 추출
+      const categoryTags = job.category_tags || [];
+      const parentId = categoryTags[0]?.parent_id;
+      const jobCategory = getJobCategory(parentId, title);
+      
+      jobs.push({
+        id: String(job.id),
+        title: title,
+        company: job.company?.name || 'Unknown',
+        location: location,
+        address: location,
+        region: normalizeRegion(location),
+        description: title,
+        requirements: `경력 ${reqYears.min}년 이상`,
+        url: `https://www.wanted.co.kr/wd/${job.id}`,
+        tags: [],
+        jobCategory: jobCategory,
+        jobRole: extractJobRole(title, jobCategory),
+        experienceLevel: reqYears.min >= 7 ? '시니어' : reqYears.min >= 3 ? '미들' : '주니어',
+        requiredYears: reqYears,
+      });
+    }
+    
+    console.log(`총 ${jobs.length}개 공고 로드 완료`);
+    
+  } catch (e) {
+    console.error('API 호출 에러:', e);
+    throw new Error('NO_JOBS_FOUND');
   }
   
   if (jobs.length === 0) {
     throw new Error('NO_JOBS_FOUND');
   }
   
-  console.log(`총 ${jobs.length}개 공고 로드 완료`);
   return jobs;
+}
+
+// parent_id로 직군 분류
+function getJobCategory(parentId: number | undefined, title: string): string {
+  // parent_id 기반 분류
+  const categoryMap: { [key: number]: string } = {
+    507: '기획',    // 경영/비즈니스
+    518: '개발',    // 개발
+    523: '디자인',  // 디자인
+    527: '데이터',  // 데이터
+    526: '마케팅',  // 마케팅/광고
+    530: '영업',    // 영업
+    510: 'HR',      // 인사
+    525: '미디어',  // 미디어
+    524: '고객서비스', // CS
+    896: '금융',    // 금융
+    10057: '게임',  // 게임 제작
+  };
+  
+  if (parentId && categoryMap[parentId]) {
+    return categoryMap[parentId];
+  }
+  
+  // 제목 기반 추론 (폴백)
+  const lower = title.toLowerCase();
+  if (/개발|developer|engineer|프론트|백엔드|ios|android/i.test(lower)) return '개발';
+  if (/기획|pm|po|product|플래너/i.test(lower)) return '기획';
+  if (/디자인|designer|ux|ui/i.test(lower)) return '디자인';
+  if (/데이터|data|ml|ai|분석/i.test(lower)) return '데이터';
+  if (/마케팅|marketing|그로스|퍼포먼스/i.test(lower)) return '마케팅';
+  if (/영업|sales|세일즈|b2b/i.test(lower)) return '영업';
+  if (/인사|hr|채용|리크루터/i.test(lower)) return 'HR';
+  
+  return '기타';
 }
 
 // 경력 파싱
@@ -157,7 +186,8 @@ function extractJobRole(title: string, category: string): string {
   if (category === '기획') {
     if (/\bpo\b|product\s*owner|프로덕트\s*오너/i.test(lower)) return 'PO';
     if (/\bpm\b|product\s*manager|프로덕트\s*매니저/i.test(lower)) return 'PM';
-    if (/사업\s*기획|사업개발/i.test(lower)) return '사업기획';
+    if (/사업\s*기획|사업개발|bd\b/i.test(lower)) return '사업기획';
+    if (/전략/i.test(lower)) return '전략기획';
     return '서비스기획';
   }
   
@@ -167,9 +197,10 @@ function extractJobRole(title: string, category: string): string {
     if (/풀스택|fullstack|full-stack/i.test(lower)) return '풀스택';
     if (/ios|swift/i.test(lower)) return 'iOS';
     if (/android|안드로이드|kotlin/i.test(lower)) return 'Android';
-    if (/devops|sre|인프라|mlops/i.test(lower)) return 'DevOps';
+    if (/devops|sre|인프라|mlops|클라우드/i.test(lower)) return 'DevOps';
     if (/보안|security/i.test(lower)) return '보안';
-    if (/qa|test|테스트/i.test(lower)) return 'QA';
+    if (/qa|test|테스트|품질/i.test(lower)) return 'QA';
+    if (/임베디드|embedded|펌웨어/i.test(lower)) return '임베디드';
     return '개발';
   }
   
@@ -178,12 +209,14 @@ function extractJobRole(title: string, category: string): string {
     if (/ui/i.test(lower)) return 'UI디자인';
     if (/그래픽|graphic|bi|브랜드/i.test(lower)) return '그래픽디자인';
     if (/영상|motion|모션/i.test(lower)) return '영상디자인';
+    if (/3d|게임/i.test(lower)) return '3D디자인';
     return '디자인';
   }
   
   if (category === '데이터') {
     if (/ml|머신러닝|딥러닝|ai\b/i.test(lower)) return 'ML엔지니어';
     if (/엔지니어|engineer/i.test(lower)) return '데이터엔지니어';
+    if (/사이언/i.test(lower)) return '데이터사이언티스트';
     return '데이터분석';
   }
   
@@ -192,8 +225,31 @@ function extractJobRole(title: string, category: string): string {
     if (/퍼포먼스|performance/i.test(lower)) return '퍼포먼스마케팅';
     if (/콘텐츠|content|콘텐트/i.test(lower)) return '콘텐츠마케팅';
     if (/브랜드|brand/i.test(lower)) return '브랜드마케팅';
+    if (/crm/i.test(lower)) return 'CRM마케팅';
     return '마케팅';
   }
   
-  return '기타';
+  if (category === '영업') {
+    if (/b2b/i.test(lower)) return 'B2B영업';
+    if (/b2c/i.test(lower)) return 'B2C영업';
+    if (/account|어카운트/i.test(lower)) return '어카운트매니저';
+    if (/파트너/i.test(lower)) return '파트너영업';
+    return '영업';
+  }
+  
+  if (category === 'HR') {
+    if (/채용|리크루터|recruiter/i.test(lower)) return '채용담당';
+    if (/교육|육성/i.test(lower)) return '교육담당';
+    if (/보상|급여/i.test(lower)) return '보상담당';
+    if (/hrbp/i.test(lower)) return 'HRBP';
+    return 'HR';
+  }
+  
+  if (category === '고객서비스') {
+    if (/cs|고객/i.test(lower)) return 'CS';
+    if (/cx/i.test(lower)) return 'CX';
+    return '고객서비스';
+  }
+  
+  return category || '기타';
 }

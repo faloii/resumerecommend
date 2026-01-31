@@ -10,7 +10,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const resumeText = body.resumeText;
     const currentSalary = body.currentSalary || null;
-    const preferredLocation = body.preferredLocation || null;
 
     if (!resumeText || resumeText.trim().length < 30) {
       return NextResponse.json({ error: '이력서 내용을 입력해주세요.' }, { status: 400 });
@@ -23,7 +22,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: '채용 공고를 불러오는 데 실패했습니다.' }, { status: 500 });
     }
 
-    const matches = await analyzeMatches(resumeText, jobs, currentSalary, preferredLocation);
+    const matches = await analyzeMatches(resumeText, jobs, currentSalary);
 
     return NextResponse.json({ success: true, matches, category: category.name });
   } catch (error) {

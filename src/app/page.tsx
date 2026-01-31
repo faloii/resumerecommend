@@ -2,444 +2,363 @@
 
 import { useState, useEffect } from 'react';
 
-interface ExperienceMatchInfo {
-  status: 'ideal' | 'perfect' | 'good' | 'acceptable' | 'underqualified' | 'overqualified';
-  message: string;
-  icon: string;
-  color: string;
-}
-
 interface MatchResult {
   job: {
     id: string;
     title: string;
     company: string;
     location: string;
-    description: string;
     url: string;
     tags: string[];
   };
   score: number;
-  topPercent: number;
   summary: string;
   keyMatches: string[];
-  experienceMatch: ExperienceMatchInfo;
-  estimatedSalary: { min: number; max: number };
+  salaryRange: string;
+  hookMessage: string;
+  matchReasons: {
+    experience: string;
+    skills: string;
+    fit: string;
+  };
+  experienceWarning: {
+    type: 'match' | 'slight' | 'significant';
+    message: string;
+  } | null;
 }
 
-const LOCATIONS = [
-  '서울', '경기', '인천', '부산', '대구', '대전', 
-  '광주', '세종', '울산', '강원', '충북', '충남',
-  '전북', '전남', '경북', '경남', '제주', '원격근무'
+function getTopPercent(score: number): number {
+  if (score >= 88) return 5;
+  if (score >= 83) return 10;
+  if (score >= 78) return 15;
+  if (score >= 73) return 20;
+  if (score >= 68) return 25;
+  if (score >= 63) return 30;
+  if (score >= 58) return 35;
+  return 40;
+}
+
+const SALARY_OPTIONS = [
+  { value: 0, label: '선택 안함' },
+  { value: 3000, label: '3,000만원' },
+  { value: 4000, label: '4,000만원' },
+  { value: 5000, label: '5,000만원' },
+  { value: 6000, label: '6,000만원' },
+  { value: 7000, label: '7,000만원' },
+  { value: 8000, label: '8,000만원' },
+  { value: 9000, label: '9,000만원' },
+  { value: 10000, label: '1억원' },
+  { value: 12000, label: '1억 2,000만원' },
+  { value: 15000, label: '1억 5,000만원 이상' },
 ];
 
 const LOADING_MESSAGES = [
-  '이력서 분석 중...',
-  '적합한 공고 탐색 중...',
-  '매칭 점수 계산 중...',
-  '거의 완료!...',
+  '이력서 분석 중',
+  '적합한 공고 탐색 중',
+  '매칭 점수 계산 중',
+  '거의 완료!',
 ];
 
 export default function Home() {
   const [resumeText, setResumeText] = useState('');
-  const [currentSalary, setCurrentSalary] = useState<string>('');
-  const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
+  const [currentSalary, setCurrentSalary] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
-  const [results, setResults] = useState<MatchResult[] | null>(null);
+  const [result, setResult] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // 로딩 메시지 순환
   useEffect(() => {
     if (!loading) return;
-    
     const interval = setInterval(() => {
       setLoadingMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
     }, 2500);
-
     return () => clearInterval(interval);
   }, [loading]);
 
-  const toggleLocation = (location: string) => {
-    setSelectedLocations(prev => 
-      prev.includes(location)
-        ? prev.filter(l => l !== location)
-        : [...prev, location]
-    );
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!resumeText || resumeText.trim().length < 50) {
-      setError('이력서 내용을 50자 이상 입력해주세요.');
+    if (resumeText.trim().length < 30) {
+      setError('이력서 내용을 30자 이상 입력해주세요.');
       return;
     }
-
     setLoading(true);
-    setLoadingMessageIndex(0);
     setError(null);
-    setResults(null);
+    setResult(null);
+    setLoadingMessageIndex(0);
 
     try {
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          resumeText: resumeText.trim(),
-          currentSalary: currentSalary ? parseInt(currentSalary) : null,
-          preferredLocations: selectedLocations.length > 0 ? selectedLocations : null,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          resumeText,
+          currentSalary: currentSalary > 0 ? currentSalary : null
         }),
       });
-
       const data = await response.json();
-
       if (!response.ok) {
         throw new Error(data.error || '분석 중 오류가 발생했습니다.');
       }
-
-      setResults(data.matches);
+      if (data.matches && data.matches.length > 0) {
+        setResult(data.matches[0]);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '알 수 없는 오류가 발생했습니다.');
+      setError(err instanceof Error ? err.message : '오류가 발생했습니다.');
     } finally {
       setLoading(false);
     }
   };
 
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-green-600 bg-green-100';
-    if (score >= 70) return 'text-blue-600 bg-blue-100';
-    if (score >= 60) return 'text-yellow-600 bg-yellow-100';
-    return 'text-gray-600 bg-gray-100';
-  };
-
-  const getTopPercentBadge = (topPercent: number) => {
-    if (topPercent <= 10) return { color: 'bg-purple-600', text: '상위 ' + topPercent + '%' };
-    if (topPercent <= 20) return { color: 'bg-blue-600', text: '상위 ' + topPercent + '%' };
-    if (topPercent <= 30) return { color: 'bg-green-600', text: '상위 ' + topPercent + '%' };
-    return { color: 'bg-gray-500', text: '상위 ' + topPercent + '%' };
-  };
-
-  const formatSalary = (salary: number) => {
-    if (salary >= 10000) {
-      return `${(salary / 10000).toFixed(1)}억`;
+  const getWarningStyle = (type: string) => {
+    if (type === 'slight') {
+      return {
+        container: 'bg-yellow-50 border border-yellow-200',
+        icon: 'bg-yellow-200',
+        iconText: 'text-yellow-700',
+        text: 'text-yellow-800'
+      };
     }
-    return `${salary.toLocaleString()}만`;
+    return {
+      container: 'bg-orange-50 border border-orange-200',
+      icon: 'bg-orange-200',
+      iconText: 'text-orange-700',
+      text: 'text-orange-800'
+    };
   };
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b">
-        <div className="max-w-5xl mx-auto px-4 py-4">
+        <div className="max-w-3xl mx-auto px-4 py-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
               <span className="text-white font-bold text-xl">W</span>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">WantedFit</h1>
-              <p className="text-sm text-gray-500">AI 기반 서류 합격 예측</p>
+              <h1 className="text-xl font-bold text-gray-900">원티드핏</h1>
+              <p className="text-sm text-gray-500">AI 맞춤 공고 추천</p>
             </div>
           </div>
         </div>
       </header>
 
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        {/* Hero Section */}
-        {!results && (
-          <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 mb-3">
-              서류 합격 가능성 높은 공고 찾기
-            </h2>
-            <p className="text-gray-600 max-w-xl mx-auto">
-              PDF 이력서를 업로드하면 AI가 원티드 채용 공고 중<br />
-              <span className="font-semibold text-blue-600">서류 합격 가능성이 가장 높은</span> Top 10 공고를 분석합니다.
-            </p>
-          </div>
-        )}
+      <div className="max-w-3xl mx-auto px-4 py-12">
+        {!result && (
+          <>
+            <div className="text-center mb-10">
+              <h2 className="text-4xl font-bold text-gray-900 mb-4">
+                당신을 위한<br />
+                <span className="text-blue-600">단 하나의</span> 맞춤 공고
+              </h2>
+              <p className="text-lg text-gray-600">
+                이력서 내용을 붙여넣으면 AI가 가장 적합한 공고를 찾아드립니다.
+              </p>
+            </div>
 
-        {/* Upload Form */}
-        {!results && (
-          <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
-            {/* Resume Text Input */}
-            <div>
-              <label htmlFor="resume" className="block text-sm font-medium text-gray-700 mb-2">
-                이력서 내용 붙여넣기
-              </label>
+            <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
               <textarea
-                id="resume"
                 value={resumeText}
                 onChange={(e) => setResumeText(e.target.value)}
-                placeholder="원티드 이력서 내용을 복사해서 붙여넣어 주세요.&#10;&#10;예시:&#10;- 경력 사항&#10;- 프로젝트 경험&#10;- 기술 스택&#10;- 자기소개 등"
-                rows={10}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
+                placeholder="이력서 내용을 붙여넣기 해주세요.
+
+예시:
+- 경력: 프론트엔드 개발자 3년
+- 기술: React, TypeScript, Next.js
+- 학력: 컴퓨터공학 전공"
+                className="w-full h-64 p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none resize-none text-gray-800"
+                disabled={loading}
               />
-              <div className="flex justify-between mt-2 text-sm">
-                <span className="text-gray-500">
-                  {resumeText.length > 0 ? `${resumeText.length}자 입력됨` : '최소 50자 이상 입력해주세요'}
-                </span>
-                {resumeText.length >= 50 && (
-                  <span className="text-green-600">✓ 분석 가능</span>
-                )}
-              </div>
-            </div>
+              
+              <p className="mt-2 text-sm text-gray-500 text-right">
+                {resumeText.length}자 입력됨
+              </p>
 
-            {/* Current Salary Input */}
-            <div className="mt-4">
-              <label htmlFor="salary" className="block text-sm font-medium text-gray-700 mb-1">
-                현재 연봉 (선택사항)
-              </label>
-              <div className="relative">
-                <input
-                  id="salary"
-                  type="number"
-                  value={currentSalary}
-                  onChange={(e) => setCurrentSalary(e.target.value)}
-                  placeholder="예: 5000"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none pr-12"
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">만원</span>
-              </div>
-              <p className="mt-1 text-xs text-gray-500">입력 시 연봉 수준에 맞는 공고를 우선 추천합니다</p>
-            </div>
-
-            {/* Location Selection */}
-            <div className="mt-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                희망 근무지 (선택사항)
-              </label>
-              <div className="flex flex-wrap gap-2">
-                {LOCATIONS.map((location) => (
-                  <button
-                    key={location}
-                    type="button"
-                    onClick={() => toggleLocation(location)}
-                    className={`px-3 py-1.5 text-sm rounded-full border transition-colors
-                      ${selectedLocations.includes(location)
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-                      }`}
-                  >
-                    {location}
-                  </button>
-                ))}
-              </div>
-              {selectedLocations.length > 0 && (
-                <p className="mt-2 text-sm text-blue-600">
-                  선택: {selectedLocations.join(', ')}
+              <div className="mt-6 p-4 bg-gray-50 rounded-xl">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  현재 연봉 <span className="text-gray-400 font-normal">(선택)</span>
+                </label>
+                <p className="text-xs text-gray-500 mb-3">
+                  입력하시면 현재 연봉 이상의 포지션만 추천해드려요
                 </p>
-              )}
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                <p className="text-red-600 text-sm">{error}</p>
+                <select
+                  value={currentSalary}
+                  onChange={(e) => setCurrentSalary(Number(e.target.value))}
+                  className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                  disabled={loading}
+                >
+                  {SALARY_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-            )}
 
-            {/* Submit Button with Loading Animation */}
-            <button
-              type="submit"
-              disabled={resumeText.trim().length < 50 || loading}
-              className={`w-full mt-6 py-4 rounded-lg font-semibold text-white transition-all relative overflow-hidden
-                ${resumeText.trim().length < 50 || loading
-                  ? loading 
-                    ? 'bg-blue-600 cursor-wait'
-                    : 'bg-gray-300 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-700 shadow-lg hover:shadow-xl'
-                }`}
-            >
-              {loading ? (
-                <>
-                  {/* Shimmer effect */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-600 via-purple-500 to-blue-600 animate-shimmer" 
-                       style={{ backgroundSize: '200% 100%' }} />
-                  <span className="relative flex items-center justify-center gap-2">
+              {error && (
+                <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-red-600 text-sm">{error}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={resumeText.trim().length < 30 || loading}
+                className={[
+                  'relative w-full mt-6 py-4 rounded-xl font-bold text-lg transition-all overflow-hidden',
+                  resumeText.trim().length < 30
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : loading
+                      ? 'bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 text-white cursor-wait'
+                      : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
+                ].join(' ')}
+                style={loading ? { backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite linear' } : {}}
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-3">
                     <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    {LOADING_MESSAGES[loadingMessageIndex]}
+                    <span className="inline-block min-w-[140px]">{LOADING_MESSAGES[loadingMessageIndex]}...</span>
                   </span>
-                  <p className="relative text-xs text-blue-100 mt-1">최대 30초 정도 소요될 수 있어요</p>
-                </>
-              ) : (
-                '서류 합격 예측 시작'
+                ) : (
+                  '내 맞춤 공고 찾기'
+                )}
+              </button>
+              
+              {loading && (
+                <p className="mt-3 text-center text-sm text-gray-500">
+                  최대 30초 정도 소요될 수 있어요
+                </p>
               )}
-            </button>
-          </form>
+
+              <style jsx>{`
+                @keyframes shimmer {
+                  0% { background-position: 100% 0; }
+                  100% { background-position: -100% 0; }
+                }
+              `}</style>
+            </form>
+          </>
         )}
 
-        {/* Results Section */}
-        {results && (
+        {result && (
           <div className="space-y-6">
-            {/* Results Header */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">📊 서류 합격 예측 결과</h2>
-                <p className="text-gray-600">원티드 합격 이력서 기준으로 분석한 Top 10 추천 공고</p>
+            <div className="text-center">
+              <div className="inline-block bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-full text-lg font-bold shadow-lg">
+                &quot;{result.hookMessage}&quot;
               </div>
-              <button
-                onClick={() => {
-                  setResults(null);
-                  setResumeText('');
-                  setCurrentSalary('');
-                  setSelectedLocations([]);
-                }}
-                className="px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-              >
-                다시 분석하기
-              </button>
             </div>
 
-            {/* Results Cards */}
-            <div className="space-y-4">
-              {results.map((result, index) => {
-                const topPercentBadge = getTopPercentBadge(result.topPercent);
-                const expMatch = result.experienceMatch;
-                
-                return (
-                  <div
-                    key={result.job.id}
-                    className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
-                  >
-                    <div className="p-6">
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1">
-                          {/* Rank & Badges */}
-                          <div className="flex items-center gap-3 mb-3 flex-wrap">
-                            <span className="text-2xl font-bold text-gray-300">
-                              #{index + 1}
-                            </span>
-                            <span className={`px-3 py-1 rounded-full text-sm font-semibold ${getScoreColor(result.score)}`}>
-                              {result.score}점
-                            </span>
-                            <span className={`px-2 py-1 rounded text-xs font-medium text-white ${topPercentBadge.color}`}>
-                              {topPercentBadge.text}
-                            </span>
-                          </div>
-
-                          {/* Job Title & Company */}
-                          <h3 className="text-lg font-bold text-gray-900 mb-1">
-                            {result.job.title}
-                          </h3>
-                          <p className="text-gray-600 mb-2">
-                            {result.job.company} · {result.job.location}
-                          </p>
-
-                          {/* Experience Match - 개선된 표현 */}
-                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm mb-3 ${expMatch.color}`}>
-                            <span>{expMatch.icon}</span>
-                            <span>{expMatch.message}</span>
-                          </div>
-
-                          {/* Estimated Salary */}
-                          <p className="text-sm text-green-600 font-medium mb-3">
-                            💰 추정 연봉: {formatSalary(result.estimatedSalary.min)} ~ {formatSalary(result.estimatedSalary.max)}
-                          </p>
-
-                          {/* Tags */}
-                          {result.job.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-2 mb-4">
-                              {result.job.tags.slice(0, 5).map((tag, i) => (
-                                <span
-                                  key={i}
-                                  className="px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded"
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
-                          )}
-
-                          {/* Summary */}
-                          <div className="bg-blue-50 rounded-lg p-4 mb-4">
-                            <p className="text-sm font-medium text-blue-900 mb-2">
-                              💡 서류 합격 가능성 분석
-                            </p>
-                            <p className="text-sm text-blue-800">
-                              {result.summary}
-                            </p>
-                          </div>
-
-                          {/* Key Matches */}
-                          <div className="flex flex-wrap gap-2">
-                            {result.keyMatches.map((match, i) => (
-                              <span
-                                key={i}
-                                className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full border border-green-200"
-                              >
-                                ✓ {match}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* CTA */}
-                      <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                        <a
-                          href={result.job.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-700 text-sm font-medium"
-                        >
-                          공고 상세보기 →
-                        </a>
-                        <span className="text-xs text-gray-400">
-                          이력서 개선 팁은 원티드 회원 전용
-                        </span>
-                      </div>
+            <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white">
+                <div className="flex justify-between items-center">
+                  <div className="text-center flex-1">
+                    <div className="text-sm text-blue-100 mb-1">예상 연봉</div>
+                    <div className="text-2xl font-bold">{result.salaryRange}</div>
+                  </div>
+                  <div className="w-px h-16 bg-white/30"></div>
+                  <div className="text-center flex-1">
+                    <div className="text-sm text-blue-100 mb-1">최적 매칭</div>
+                    <div className="text-3xl font-bold">상위 {getTopPercent(result.score)}%</div>
+                    <div className="mt-2 w-full bg-white/20 rounded-full h-2">
+                      <div 
+                        className="bg-white rounded-full h-2 transition-all"
+                        style={{ width: result.score + '%' }}
+                      ></div>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              </div>
+              
+              <div className="p-8">
+                {result.experienceWarning && (
+                  <div className={`rounded-xl p-4 mb-6 flex items-start gap-3 ${getWarningStyle(result.experienceWarning.type).container}`}>
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${getWarningStyle(result.experienceWarning.type).icon}`}>
+                      <span className={`text-sm ${getWarningStyle(result.experienceWarning.type).iconText}`}>!</span>
+                    </div>
+                    <p className={`text-sm ${getWarningStyle(result.experienceWarning.type).text}`}>
+                      {result.experienceWarning.message}
+                    </p>
+                  </div>
+                )}
+
+                <div className="bg-gray-50 rounded-xl p-6 mb-6">
+                  <p className="text-sm text-gray-500 mb-1">추천 공고</p>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-3">{result.job.title}</h3>
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <p className="text-sm text-gray-500">회사</p>
+                      <p className="text-lg font-semibold text-blue-600">{result.job.company}</p>
+                    </div>
+                    <div className="w-px h-10 bg-gray-300"></div>
+                    <div>
+                      <p className="text-sm text-gray-500">위치</p>
+                      <p className="text-lg font-semibold text-gray-700">{result.job.location}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 rounded-xl p-6 mb-6">
+                  <p className="text-sm font-semibold text-blue-900 mb-4">원티드 추천 이유</p>
+                  <div className="space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-blue-700 text-xs font-bold">1</span>
+                      </div>
+                      <p className="text-blue-800">{result.matchReasons?.experience || '경력 조건이 잘 맞아요'}</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-blue-700 text-xs font-bold">2</span>
+                      </div>
+                      <p className="text-blue-800">{result.matchReasons?.skills || '보유 스킬이 공고와 잘 맞아요'}</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-200 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span className="text-blue-700 text-xs font-bold">3</span>
+                      </div>
+                      <p className="text-blue-800">{result.matchReasons?.fit || '회원님의 경험을 살릴 수 있는 포지션이에요'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-8">
+                  <p className="text-sm text-gray-500 mb-3">매칭 포인트</p>
+                  <div className="flex flex-wrap gap-2">
+                    {result.keyMatches.map((match, i) => (
+                      <span key={i} className="px-4 py-2 bg-green-50 text-green-700 rounded-full border border-green-200 font-medium">
+                        {match}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <a
+                  href={result.job.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full py-4 bg-blue-600 text-white text-center font-bold rounded-xl hover:bg-blue-700 transition-colors"
+                >
+                  {result.job.company} 채용 공고 보러가기
+                </a>
+              </div>
             </div>
 
-            {/* CTA Banner */}
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-8 text-center text-white">
-              <h3 className="text-xl font-bold mb-2">
-                서류 합격률을 더 높이고 싶으신가요?
-              </h3>
-              <p className="text-blue-100 mb-4">
-                원티드 회원가입 시 이력서 개선 팁, 맞춤 추천, AI 피드백을 받을 수 있습니다.
-              </p>
-              <a
-                href="https://www.wanted.co.kr/cv/intro"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block px-6 py-3 bg-white text-blue-600 font-semibold rounded-lg hover:bg-gray-100 transition-colors"
-              >
-                원티드 이력서 작성하기
-              </a>
-            </div>
+            <button
+              onClick={() => { setResult(null); setResumeText(''); setCurrentSalary(0); }}
+              className="w-full py-3 text-gray-600 hover:text-gray-900"
+            >
+              다시 분석하기
+            </button>
           </div>
         )}
 
-        {/* Footer */}
         <footer className="mt-16 pt-8 border-t border-gray-200 text-center text-sm text-gray-500">
-          <p>
-            이 서비스는 원티드랩의 실험적 MVP입니다.
-          </p>
-          <p className="mt-1">
-            문의: WantedLab PM Team
-          </p>
+          <p>원티드랩의 실험적 MVP 서비스</p>
+          <p className="mt-1">문의: 원티드랩 PO팀</p>
         </footer>
       </div>
-
-      {/* Shimmer animation style */}
-      <style jsx>{`
-        @keyframes shimmer {
-          0% { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
-        .animate-shimmer {
-          animation: shimmer 2s infinite linear;
-        }
-      `}</style>
     </main>
   );
 }

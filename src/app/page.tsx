@@ -9,6 +9,7 @@ interface MatchResult {
     company: string;
     location: string;
     url: string;
+    tags: string[];
   };
   score: number;
   summary: string;
@@ -136,35 +137,56 @@ export default function Home() {
             </div>
 
             <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
+              {/* 점수 영역 */}
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white text-center">
                 <div className="text-6xl font-bold mb-2">{result.score}</div>
                 <div className="text-blue-100">매칭 점수</div>
               </div>
               
               <div className="p-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-2">{result.job.title}</h3>
-                <p className="text-lg text-gray-600 mb-6">{result.job.company} · {result.job.location}</p>
+                {/* 공고 정보 - 강조 표시 */}
+                <div className="bg-gray-50 rounded-xl p-6 mb-6">
+                  <p className="text-sm text-gray-500 mb-1">추천 공고</p>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-3">{result.job.title}</h3>
+                  <div className="flex items-center gap-4">
+                    <div>
+                      <p className="text-sm text-gray-500">회사</p>
+                      <p className="text-lg font-semibold text-blue-600">{result.job.company}</p>
+                    </div>
+                    <div className="w-px h-10 bg-gray-300"></div>
+                    <div>
+                      <p className="text-sm text-gray-500">위치</p>
+                      <p className="text-lg font-semibold text-gray-700">{result.job.location}</p>
+                    </div>
+                  </div>
+                </div>
 
+                {/* AI 추천 이유 */}
                 <div className="bg-blue-50 rounded-xl p-6 mb-6">
                   <p className="text-sm font-semibold text-blue-900 mb-2">AI 추천 이유</p>
                   <p className="text-blue-800">{result.summary}</p>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mb-8">
-                  {result.keyMatches.map((match, i) => (
-                    <span key={i} className="px-3 py-1 bg-green-50 text-green-700 rounded-full border border-green-200 text-sm">
-                      {match}
-                    </span>
-                  ))}
+                {/* 매칭 포인트 */}
+                <div className="mb-8">
+                  <p className="text-sm text-gray-500 mb-3">매칭 포인트</p>
+                  <div className="flex flex-wrap gap-2">
+                    {result.keyMatches.map((match, i) => (
+                      <span key={i} className="px-4 py-2 bg-green-50 text-green-700 rounded-full border border-green-200 font-medium">
+                        {match}
+                      </span>
+                    ))}
+                  </div>
                 </div>
 
+                {/* CTA 버튼 */}
                 <a
                   href={result.job.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="block w-full py-4 bg-blue-600 text-white text-center font-bold rounded-xl hover:bg-blue-700"
+                  className="block w-full py-4 bg-blue-600 text-white text-center font-bold rounded-xl hover:bg-blue-700 transition-colors"
                 >
-                  공고 보러가기
+                  {result.job.company} 채용 공고 보러가기
                 </a>
               </div>
             </div>

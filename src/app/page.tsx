@@ -18,6 +18,16 @@ interface MatchResult {
   hookMessage: string;
 }
 
+function getTopPercent(score: number): number {
+  if (score >= 90) return 3;
+  if (score >= 85) return 5;
+  if (score >= 80) return 10;
+  if (score >= 75) return 15;
+  if (score >= 70) return 20;
+  if (score >= 65) return 30;
+  return 35;
+}
+
 export default function Home() {
   const [resumeText, setResumeText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -141,17 +151,24 @@ export default function Home() {
             </div>
 
             <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
-              {/* 연봉 + 점수 영역 */}
+              {/* 상위 % 매칭 + 연봉 */}
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white">
                 <div className="flex justify-between items-center">
                   <div className="text-center flex-1">
                     <div className="text-sm text-blue-100 mb-1">예상 연봉</div>
                     <div className="text-2xl font-bold">{result.salaryRange}</div>
                   </div>
-                  <div className="w-px h-12 bg-white/30"></div>
+                  <div className="w-px h-16 bg-white/30"></div>
                   <div className="text-center flex-1">
-                    <div className="text-sm text-blue-100 mb-1">매칭 점수</div>
-                    <div className="text-4xl font-bold">{result.score}</div>
+                    <div className="text-sm text-blue-100 mb-1">🎯 최적 매칭</div>
+                    <div className="text-3xl font-bold">상위 {getTopPercent(result.score)}%</div>
+                    <div className="mt-2 w-full bg-white/20 rounded-full h-2">
+                      <div 
+                        className="bg-white rounded-full h-2 transition-all"
+                        style={{ width: result.score + '%' }}
+                      ></div>
+                    </div>
+                    <div className="text-xs text-blue-100 mt-1">이 공고에 가장 적합한 후보입니다</div>
                   </div>
                 </div>
               </div>

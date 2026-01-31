@@ -22,74 +22,19 @@ export async function crawlWantedJobs(keyword: string = '', limit: number = 50):
   console.log('원티드 공고 크롤링 시작...');
   
   try {
-    // 1. 먼저 원티드 API로 실제 공고 가져오기 시도
+    // 원티드 API로 실제 공고 가져오기
     const apiJobs = await fetchRealJobsFromAPI();
-    if (apiJobs.length >= 5) {
-      console.log(`원티드 API에서 ${apiJobs.length}개 공고 로드 성공`);
-      return apiJobs;
+    
+    if (apiJobs.length === 0) {
+      throw new Error('NO_JOBS_FOUND');
     }
     
-    // 2. API 실패 시 HTML 크롤링 시도
-    console.log('API 부족, HTML 크롤링 시도...');
-    const jobs: JobPosting[] = [];
+    console.log(`원티드 API에서 ${apiJobs.length}개 공고 로드 성공`);
+    return apiJobs;
     
-    const searchUrl = keyword 
-      ? `https://www.wanted.co.kr/search?query=${encodeURIComponent(keyword)}&tab=position`
-      : `https://www.wanted.co.kr/wdlist/518?country=kr&job_sort=job.latest_order&years=-1&locations=all`;
-    
-    const response = await fetch(searchUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-      },
-    });
-
-    if (!response.ok) {
-      console.error('HTML 크롤링도 실패, 최소 샘플 사용');
-      return getMinimalSampleJobs();
-    }
-
-    const html = await response.text();
-    const $ = cheerio.load(html);
-
-    // 공고 카드에서 ID 추출
-    const jobIds: string[] = [];
-    $('a[href*="/wd/"]').each((_, el) => {
-      const href = $(el).attr('href');
-      const match = href?.match(/\/wd\/(\d+)/);
-      if (match && match[1] && !jobIds.includes(match[1])) {
-        jobIds.push(match[1]);
-      }
-    });
-
-    // 각 공고 상세 페이지 크롤링 (최대 limit개)
-    const limitedIds = jobIds.slice(0, Math.min(limit, jobIds.length));
-    
-    for (const jobId of limitedIds) {
-      try {
-        const job = await crawlJobDetail(jobId);
-        if (job) {
-          jobs.push(job);
-        }
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (error) {
-        console.error(`Failed to crawl job ${jobId}:`, error);
-      }
-    }
-
-    // 크롤링 결과가 부족하면 최소 샘플 데이터로 보충
-    if (jobs.length < 5) {
-      console.log('크롤링 결과 부족, 최소 샘플로 보충');
-      const sampleJobs = getMinimalSampleJobs();
-      return [...jobs, ...sampleJobs.slice(0, Math.max(0, 5 - jobs.length))];
-    }
-
-    return jobs;
   } catch (error) {
     console.error('Crawling error:', error);
-    return getMinimalSampleJobs();
+    throw new Error('CRAWLING_FAILED');
   }
 }
 
@@ -321,14 +266,17 @@ async function crawlJobDetail(jobId: string): Promise<JobPosting | null> {
   }
 }
 
-// 원티드 API에서 실제 공고 가져오기
+// 원티드 API에서 실제 공고 가져오기 (전체 직군)
 async function fetchRealJobsFromAPI(): Promise<JobPosting[]> {
   const jobs: JobPosting[] = [];
   
-  // 직군별 tag_type_ids: 507(기획/경영), 518(개발), 523(디자인), 527(데이터)
+  // 전체 직군별 tag_type_ids
   const categories = [
     { tagId: 507, category: '기획', roles: ['PM', 'PO', '서비스기획'] },
     { tagId: 518, category: '개발', roles: ['백엔드', '프론트엔드', '풀스택'] },
+    { tagId: 523, category: '디자인', roles: ['UX디자인', 'UI디자인'] },
+    { tagId: 527, category: '데이터', roles: ['데이터분석', 'ML엔지니어'] },
+    { tagId: 526, category: '마케팅', roles: ['마케팅'] },
   ];
   
   for (const cat of categories) {
@@ -419,99 +367,24 @@ function extractJobRoleFromAPI(title: string, category: string): string {
   if (category === '디자인') {
     if (/ux/i.test(lower)) return 'UX디자인';
     if (/ui/i.test(lower)) return 'UI디자인';
+    if (/그래픽|graphic/i.test(lower)) return '그래픽디자인';
     return 'UX디자인';
   }
   
   if (category === '데이터') {
-    if (/ml|머신러닝|딥러닝/i.test(lower)) return 'ML엔지니어';
+    if (/ml|머신러닝|딥러닝|ai/i.test(lower)) return 'ML엔지니어';
+    if (/엔지니어|engineer/i.test(lower)) return '데이터엔지니어';
     return '데이터분석';
+  }
+  
+  if (category === '마케팅') {
+    if (/그로스|growth/i.test(lower)) return '그로스마케팅';
+    if (/퍼포먼스|performance/i.test(lower)) return '퍼포먼스마케팅';
+    if (/콘텐츠|content/i.test(lower)) return '콘텐츠마케팅';
+    return '마케팅';
   }
   
   return '기타';
 }
 
 // 폴백용 최소 샘플 데이터 (API 실패 시에만 사용)
-function getMinimalSampleJobs(): JobPosting[] {
-  return [
-    {
-      id: '339179',
-      title: '[Product] FinTech PO (5년 이상)',
-      company: '위대한상상(요기요)',
-      location: '서울시 강남구 역삼동',
-      address: '강남구 논현로 85길 70, 7층',
-      region: '서울',
-      description: '핀테크 프로덕트 오너 채용',
-      requirements: 'PO 경력 5년 이상, 핀테크 도메인 이해',
-      url: 'https://www.wanted.co.kr/wd/339179',
-      tags: ['PO', '핀테크', 'Product'],
-      jobCategory: '기획',
-      jobRole: 'PO',
-      experienceLevel: '시니어',
-      requiredYears: { min: 5, max: 12 },
-    },
-    {
-      id: '339145',
-      title: '플랫폼 기획자(PO/PM) (팀장급)',
-      company: '파메어스',
-      location: '서울시 용산구 서빙고로',
-      address: '서울 용산구 서빙고로 17, 20층',
-      region: '서울',
-      description: '플랫폼 PO/PM 팀장급 채용',
-      requirements: 'PM/PO 경력 7년 이상, 팀 리딩 경험',
-      url: 'https://www.wanted.co.kr/wd/339145',
-      tags: ['PM', 'PO', '팀장'],
-      jobCategory: '기획',
-      jobRole: 'PM',
-      experienceLevel: '시니어',
-      requiredYears: { min: 7, max: 15 },
-    },
-    {
-      id: '339135',
-      title: '사업기획(7년이상)',
-      company: '우아한형제들(배달의민족)',
-      location: '서울시 송파구 위례성대로',
-      address: '서울시 송파구 위례성대로2 장은빌딩',
-      region: '서울',
-      description: '배달의민족 사업기획 담당자',
-      requirements: '사업기획 경력 7년 이상',
-      url: 'https://www.wanted.co.kr/wd/339135',
-      tags: ['사업기획', '기획'],
-      jobCategory: '기획',
-      jobRole: '서비스기획',
-      experienceLevel: '시니어',
-      requiredYears: { min: 7, max: 15 },
-    },
-    {
-      id: '339192',
-      title: '백엔드 개발자 (3년~5년이상)',
-      company: '어글리랩',
-      location: '서울',
-      address: '서울',
-      region: '서울',
-      description: '백엔드 개발자 채용',
-      requirements: '백엔드 개발 경력 3~5년',
-      url: 'https://www.wanted.co.kr/wd/339192',
-      tags: ['백엔드', 'Java', 'Spring'],
-      jobCategory: '개발',
-      jobRole: '백엔드',
-      experienceLevel: '미들',
-      requiredYears: { min: 3, max: 5 },
-    },
-    {
-      id: '339195',
-      title: 'MLOps 엔지니어',
-      company: '넥슨코리아(NEXON)',
-      location: '경기도 성남시 분당구',
-      address: '경기도 성남시 분당구',
-      region: '경기',
-      description: 'AI 솔루션 MLOps 엔지니어',
-      requirements: 'MLOps 경험, Kubernetes, Docker',
-      url: 'https://www.wanted.co.kr/wd/339195',
-      tags: ['MLOps', 'AI', 'DevOps'],
-      jobCategory: '개발',
-      jobRole: 'DevOps',
-      experienceLevel: '시니어',
-      requiredYears: { min: 5, max: 12 },
-    },
-  ];
-}

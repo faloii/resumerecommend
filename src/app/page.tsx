@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface MatchResult {
   job: {
@@ -38,6 +38,52 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [loadingMessage, setLoadingMessage] = useState('');
+
+  const ESTIMATED_TIME = 15; // 예상 소요 시간 (초)
+
+  const loadingMessages = [
+    '이력서 분석 중...',
+    '채용 공고 탐색 중...',
+    '스킬 매칭 중...',
+    '경력 분석 중...',
+    '최적의 공고 찾는 중...',
+    '거의 완료...',
+  ];
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    
+    if (loading) {
+      setElapsedTime(0);
+      interval = setInterval(() => {
+        setElapsedTime(prev => {
+          const newTime = prev + 1;
+          // 메시지 변경
+          const messageIndex = Math.min(Math.floor(newTime / 3), loadingMessages.length - 1);
+          setLoadingMessage(loadingMessages[messageIndex]);
+          return newTime;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [loading]);
+
+  const getRemainingTime = () => {
+    const remaining = Math.max(ESTIMATED_TIME - elapsedTime, 1);
+    if (elapsedTime >= ESTIMATED_TIME) {
+      return '거의 완료...';
+    }
+    return '약 ' + remaining + '초';
+  };
+
+  const getProgress = () => {
+    return Math.min((elapsedTime / ESTIMATED_TIME) * 100, 95);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,6 +96,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setLoadingMessage(loadingMessages[0]);
 
     try {
       const response = await fetch('/api/analyze', {
@@ -91,7 +138,7 @@ export default function Home() {
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-12">
-        {!result && (
+        {!result && !loading && (
           <>
             <div className="text-center mb-10">
               <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -130,20 +177,45 @@ export default function Home() {
                     : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
                   }`}
               >
-                {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    AI가 분석 중...
-                  </span>
-                ) : (
-                  '내 맞춤 공고 찾기'
-                )}
+                내 맞춤 공고 찾기
               </button>
             </form>
           </>
+        )}
+
+        {/* 로딩 화면 */}
+        {loading && (
+          <div className="max-w-md mx-auto text-center py-16">
+            <div className="mb-8">
+              <div className="w-20 h-20 mx-auto bg-blue-100 rounded-full flex items-center justify-center mb-6">
+                <svg className="animate-spin w-10 h-10 text-blue-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+              </div>
+              
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">AI가 분석 중...</h3>
+              <p className="text-gray-600 mb-6">{loadingMessage}</p>
+              
+              {/* 프로그레스 바 */}
+              <div className="w-full bg-gray-200 rounded-full h-3 mb-3">
+                <div 
+                  className="bg-gradient-to-r from-blue-500 to-purple-500 h-3 rounded-full transition-all duration-1000"
+                  style={{ width: getProgress() + '%' }}
+                ></div>
+              </div>
+              
+              {/* 남은 시간 */}
+              <div className="flex justify-between text-sm text-gray-500">
+                <span>{elapsedTime}초 경과</span>
+                <span>{getRemainingTime()}</span>
+              </div>
+            </div>
+            
+            <p className="text-sm text-gray-400">
+              수백 개의 공고 중 최적의 매칭을 찾고 있어요
+            </p>
+          </div>
         )}
 
         {result && (
@@ -195,7 +267,7 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* 원티드 추천 이유 - 구조화 */}
+                {/* 원티드 추천 이유 */}
                 <div className="bg-blue-50 rounded-xl p-6 mb-6">
                   <p className="text-sm font-semibold text-blue-900 mb-4">원티드 추천 이유</p>
                   <div className="space-y-3">

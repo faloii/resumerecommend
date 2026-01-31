@@ -14,6 +14,8 @@ interface MatchResult {
   score: number;
   summary: string;
   keyMatches: string[];
+  salaryRange: string;
+  hookMessage: string;
 }
 
 export default function Home() {
@@ -130,21 +132,32 @@ export default function Home() {
         )}
 
         {result && (
-          <div className="space-y-8">
+          <div className="space-y-6">
+            {/* 핏 메시지 - 최상단 후킹 */}
             <div className="text-center">
-              <p className="text-blue-600 font-semibold mb-2">AI 분석 완료</p>
-              <h2 className="text-3xl font-bold text-gray-900">당신을 위한 맞춤 공고</h2>
+              <div className="inline-block bg-gradient-to-r from-purple-600 to-blue-600 text-white px-6 py-3 rounded-full text-lg font-bold shadow-lg">
+                &quot;{result.hookMessage}&quot;
+              </div>
             </div>
 
             <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
-              {/* 점수 영역 */}
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white text-center">
-                <div className="text-6xl font-bold mb-2">{result.score}</div>
-                <div className="text-blue-100">매칭 점수</div>
+              {/* 연봉 + 점수 영역 */}
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 text-white">
+                <div className="flex justify-between items-center">
+                  <div className="text-center flex-1">
+                    <div className="text-sm text-blue-100 mb-1">예상 연봉</div>
+                    <div className="text-2xl font-bold">{result.salaryRange}</div>
+                  </div>
+                  <div className="w-px h-12 bg-white/30"></div>
+                  <div className="text-center flex-1">
+                    <div className="text-sm text-blue-100 mb-1">매칭 점수</div>
+                    <div className="text-4xl font-bold">{result.score}</div>
+                  </div>
+                </div>
               </div>
               
               <div className="p-8">
-                {/* 공고 정보 - 강조 표시 */}
+                {/* 공고 정보 */}
                 <div className="bg-gray-50 rounded-xl p-6 mb-6">
                   <p className="text-sm text-gray-500 mb-1">추천 공고</p>
                   <h3 className="text-2xl font-bold text-gray-900 mb-3">{result.job.title}</h3>

@@ -87,7 +87,15 @@ export default function Home() {
         body: formData,
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        console.error('Response text:', text);
+        throw new Error('서버 응답을 처리할 수 없습니다. 잠시 후 다시 시도해주세요.');
+      }
 
       if (!response.ok) {
         throw new Error(data.error || '분석 중 오류가 발생했습니다.');
@@ -117,7 +125,6 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="flex items-center gap-3">
@@ -133,7 +140,6 @@ export default function Home() {
       </header>
 
       <div className="max-w-5xl mx-auto px-4 py-8">
-        {/* Hero Section */}
         {!results && (
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-900 mb-3">
@@ -146,7 +152,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Upload Form */}
         {!results && (
           <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
             <div 
@@ -208,7 +213,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* Keyword Input (Optional) */}
             <div className="mt-4">
               <label htmlFor="keyword" className="block text-sm font-medium text-gray-700 mb-1">
                 관심 직군/키워드 (선택사항)
@@ -223,14 +227,12 @@ export default function Home() {
               />
             </div>
 
-            {/* Error Message */}
             {error && (
               <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
                 <p className="text-red-600 text-sm">{error}</p>
               </div>
             )}
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={!file || loading}
@@ -255,10 +257,8 @@ export default function Home() {
           </form>
         )}
 
-        {/* Results Section */}
         {results && (
           <div className="space-y-6">
-            {/* Results Header */}
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">매칭 결과</h2>
@@ -276,7 +276,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Results Cards */}
             <div className="space-y-4">
               {results.map((result, index) => (
                 <div
@@ -286,7 +285,6 @@ export default function Home() {
                   <div className="p-6">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
-                        {/* Rank & Score */}
                         <div className="flex items-center gap-3 mb-3">
                           <span className="text-2xl font-bold text-gray-300">
                             #{index + 1}
@@ -296,7 +294,6 @@ export default function Home() {
                           </span>
                         </div>
 
-                        {/* Job Title & Company */}
                         <h3 className="text-lg font-bold text-gray-900 mb-1">
                           {result.job.title}
                         </h3>
@@ -304,7 +301,6 @@ export default function Home() {
                           {result.job.company} · {result.job.location}
                         </p>
 
-                        {/* Tags */}
                         {result.job.tags.length > 0 && (
                           <div className="flex flex-wrap gap-2 mb-4">
                             {result.job.tags.map((tag, i) => (
@@ -318,31 +314,28 @@ export default function Home() {
                           </div>
                         )}
 
-                        {/* Summary */}
                         <div className="bg-blue-50 rounded-lg p-4 mb-4">
                           <p className="text-sm font-medium text-blue-900 mb-2">
-                            💡 AI 매칭 분석
+                            AI 매칭 분석
                           </p>
                           <p className="text-sm text-blue-800">
                             {result.summary}
                           </p>
                         </div>
 
-                        {/* Key Matches */}
                         <div className="flex flex-wrap gap-2">
                           {result.keyMatches.map((match, i) => (
                             <span
                               key={i}
                               className="px-2 py-1 bg-green-50 text-green-700 text-xs rounded-full border border-green-200"
                             >
-                              ✓ {match}
+                              {match}
                             </span>
                           ))}
                         </div>
                       </div>
                     </div>
 
-                    {/* CTA */}
                     <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
                       <a
                         href={result.job.url}
@@ -350,7 +343,7 @@ export default function Home() {
                         rel="noopener noreferrer"
                         className="text-blue-600 hover:text-blue-700 text-sm font-medium"
                       >
-                        공고 보기 →
+                        공고 보기
                       </a>
                       <span className="text-xs text-gray-400">
                         상세 분석은 원티드 회원 전용
@@ -361,7 +354,6 @@ export default function Home() {
               ))}
             </div>
 
-            {/* CTA Banner */}
             <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl p-8 text-center text-white">
               <h3 className="text-xl font-bold mb-2">
                 더 정확한 매칭 분석이 필요하신가요?
@@ -381,7 +373,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Footer */}
         <footer className="mt-16 pt-8 border-t border-gray-200 text-center text-sm text-gray-500">
           <p>
             이 서비스는 원티드랩의 실험적 MVP입니다.
@@ -394,4 +385,3 @@ export default function Home() {
     </main>
   );
 }
-

@@ -513,12 +513,13 @@ ${jobsContext}
         adjustedScore -= Math.floor(Math.random() * 3);
       }
       
-      // 경력 미스매치 페널티
-      if (expMatch === 'underqualified') {
+      // 경력 미스매치 페널티 (expMatch.status 사용)
+      if (expMatch.status === 'underqualified') {
         const gap = reqExp.min - candidateExperience;
         adjustedScore -= Math.min(gap * 5, 20);
-      } else if (expMatch === 'overqualified') {
-        const gap = candidateExperience - reqExp.max;
+      } else if (expMatch.status === 'overqualified') {
+        const effectiveMax = reqExp.max > 20 ? reqExp.min + 10 : reqExp.max;
+        const gap = candidateExperience - effectiveMax;
         adjustedScore -= Math.min(gap * 3, 15);
       }
       

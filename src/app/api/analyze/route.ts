@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { extractTextFromPDF } from '@/lib/pdf-parser';
 import { crawlWantedJobs } from '@/lib/crawler';
 import { analyzeMatches } from '@/lib/analyzer';
 
@@ -7,26 +6,11 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const file = formData.get('resume') as File | null;
+    const body = await request.json();
+    const resumeText = body.resumeText;
 
-    if (!file) {
-      return NextResponse.json({ error: '이력서 파일이 필요합니다.' }, { status: 400 });
-    }
-
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
-      return NextResponse.json({ error: 'PDF 파일만 지원합니다.' }, { status: 400 });
-    }
-
-    if (file.size > 10 * 1024 * 1024) {
-      return NextResponse.json({ error: '파일 크기는 10MB 이하여야 합니다.' }, { status: 400 });
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const resumeText = await extractTextFromPDF(buffer);
-
-    if (!resumeText || resumeText.trim().length < 50) {
-      return NextResponse.json({ error: '이력서에서 텍스트를 추출할 수 없습니다.' }, { status: 400 });
+    if (!resumeText || resumeText.trim().length < 30) {
+      return NextResponse.json({ error: '이력서 내용을 입력해주세요.' }, { status: 400 });
     }
 
     const jobs = await crawlWantedJobs('', 6);

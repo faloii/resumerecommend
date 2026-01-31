@@ -23,11 +23,9 @@ export interface MatchResult {
   } | null;
 }
 
-// 경력별 현실적인 연봉 테이블 (만원 단위, 2024 한국 IT 시장 기준)
 function estimateSalaryRange(title: string, annualFrom: number, annualTo: number): { min: number; max: number } {
   const titleLower = title.toLowerCase();
   
-  // 직무 레벨 판단
   let level: 'executive' | 'lead' | 'senior' | 'mid' | 'junior' = 'mid';
   
   if (titleLower.includes('cto') || titleLower.includes('cpo') || titleLower.includes('vp') || 
@@ -44,20 +42,17 @@ function estimateSalaryRange(title: string, annualFrom: number, annualTo: number
     level = 'junior';
   }
   
-  // 레벨별 연봉 범위 (현실적인 한국 IT 시장 기준)
   const salaryTable: { [key: string]: { min: number; max: number } } = {
-    'executive': { min: 12000, max: 20000 },  // 1.2억 ~ 2억
-    'lead': { min: 8000, max: 12000 },        // 8천 ~ 1.2억
-    'senior': { min: 6000, max: 9000 },       // 6천 ~ 9천
-    'mid': { min: 4500, max: 6500 },          // 4.5천 ~ 6.5천
-    'junior': { min: 3500, max: 5000 },       // 3.5천 ~ 5천
+    'executive': { min: 12000, max: 20000 },
+    'lead': { min: 8000, max: 12000 },
+    'senior': { min: 6000, max: 9000 },
+    'mid': { min: 4500, max: 6500 },
+    'junior': { min: 3500, max: 5000 },
   };
   
-  // 경력 연차에 따른 미세 조정
   const base = salaryTable[level];
   const avgYears = (annualFrom + annualTo) / 2;
   
-  // 경력 연차 보정 (연 2~3% 증가)
   let minAdjust = 0;
   let maxAdjust = 0;
   
@@ -128,12 +123,12 @@ function calculateExperiencePenalty(userYears: number, jobFrom: number, jobTo: n
   
   if (userYears < jobFrom) {
     const diff = jobFrom - userYears;
-    return Math.min(diff * 3, 15);
+    return Math.min(diff * 5, 20);
   }
   
   if (userYears > jobTo) {
     const diff = userYears - jobTo;
-    return Math.min(diff * 2, 10);
+    return Math.min(diff * 3, 15);
   }
   
   return 0;
@@ -202,7 +197,6 @@ export async function analyzeMatches(
 ): Promise<MatchResult[]> {
   const userYears = extractYearsFromResume(resumeText);
   
-  // 연봉 필터링: 현재 연봉보다 낮은 포지션 제외
   let filteredJobs = jobs;
   if (currentSalary && currentSalary > 0) {
     filteredJobs = jobs.filter(job => {
@@ -220,7 +214,7 @@ export async function analyzeMatches(
     return i + ': ' + job.title + ' @ ' + job.company + ' (경력 ' + expRange + ')';
   }).join('\n');
 
-  const prompt = '사용자 경력: 약 ' + userYears + '년\n\n이력서:\n' + resumeText.substring(0, 2000) + '\n\n채용공고 목록:\n' + jobList + '\n\n위 이력서와 가장 잘 맞는 공고 1개를 선택하세요.\n\n반드시 아래 JSON 형식으로만 응답하세요. 한국어로만 작성:\n{"jobIndex":0,"score":85,"skillMatch":"이력서의 어떤 스킬이 공고와 맞는지 1문장","fitReason":"왜 이 회사/포지션이 적합한지 1문장","keyMatches":["매칭포인트1","매칭포인트2","매칭포인트3"],"hookMessage":"20자 이내 한줄 메시지"}\n\n주의: 모든 내용은 한국어로만, 친근한 말투(~해요, ~이에요)로 작성하세요.';
+  const prompt = '사용자 경력: 약 ' + userYears + '년\n\n이력서:\n' + resumeText.substring(0, 2000) + '\n\n채용공고 목록:\n' + jobList + '\n\n위 이력서와 가장 잘 맞는 공고 1개를 선택하세요.\n\n반드시 아래 JSON 형식으로만 응답하세요. 한국어로만 작성:\n{"jobIndex":0,"score":75,"skillMatch":"이력서의 어떤 스킬이 공고와 맞는지 1문장","fitReason":"왜 이 회사/포지션이 적합한지 1문장","keyMatches":["매칭포인트1","매칭포인트2","매칭포인트3"],"hookMessage":"20자 이내 한줄 메시지"}\n\n점수 기준 (엄격하게 평가하세요):\n- 90~100: 스킬, 경력, 직무가 완벽히 일치할 때만\n- 80~89: 대부분 일치하고 약간의 차이만 있을 때\n- 70~79: 주요 요소는 맞지만 일부 gap이 있을 때\n- 60~69: 기본 조건은 맞지만 gap이 있을 때\n- 50~59: 맞는 부분이 있지만 gap이 클 때\n\n대부분의 매칭은 70점대여야 합니다. 90점 이상은 정말 드문 경우입니다.\n\n주의: 모든 내용은 한국어로만, 친근한 말투(~해요, ~이에요)로 작성하세요.';
 
   try {
     const response = await anthropic.messages.create({
@@ -247,8 +241,16 @@ export async function analyzeMatches(
 
     const selectedJob = filteredJobs[m.jobIndex];
     
+    // 경력 페널티 적용
     const penalty = calculateExperiencePenalty(userYears, selectedJob.annualFrom, selectedJob.annualTo);
-    const adjustedScore = Math.max(m.score - penalty, 50);
+    let adjustedScore = Math.max(m.score - penalty, 50);
+    
+    // AI가 너무 높은 점수를 주면 보정
+    if (adjustedScore > 90) {
+      adjustedScore = 85 + Math.floor(Math.random() * 5); // 85~89로 제한
+    } else if (adjustedScore > 85) {
+      adjustedScore = adjustedScore - Math.floor(Math.random() * 3); // 약간 낮춤
+    }
 
     const cleanedKeyMatches = (m.keyMatches || []).map((match: string) => sanitizeText(match)).filter((match: string) => match.length > 0);
 

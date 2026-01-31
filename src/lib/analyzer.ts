@@ -16,16 +16,14 @@ export async function analyzeMatches(
   resumeText: string,
   jobs: JobPosting[]
 ): Promise<MatchResult[]> {
-  const jobList = jobs.map((job, i) => {
-    return i + ": " + job.title + " @ " + job.company;
-  }).join("\n");
+  const jobList = jobs.map((job, i) => i + ": " + job.title + " @ " + job.company).join("\n");
 
-  const prompt = "Resume:\n" + resumeText.substring(0, 3000) + "\n\nJobs:\n" + jobList + "\n\nReturn JSON only: {\"matches\":[{\"jobIndex\":0,\"score\":85,\"summary\":\"why good fit\",\"keyMatches\":[\"skill1\",\"skill2\",\"skill3\"]}]} Top 5 by score desc.";
+  const prompt = "Resume:\n" + resumeText.substring(0, 2000) + "\n\nJobs:\n" + jobList + "\n\nPick the ONE best matching job. Return JSON only: {\"jobIndex\":0,\"score\":85,\"summary\":\"2 sentence reason in Korean\",\"keyMatches\":[\"match1\",\"match2\",\"match3\"]}";
 
   try {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
+      max_tokens: 500,
       messages: [{ role: 'user', content: prompt }],
     });
 
@@ -34,24 +32,23 @@ export async function analyzeMatches(
       throw new Error('Unexpected response type');
     }
 
-    let jsonText = content.text.trim();
-    const jsonMatch = jsonText.match(/\{[\s\S]*\}/);
+    const jsonMatch = content.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('Failed to parse JSON');
     }
 
-    const result = JSON.parse(jsonMatch[0]);
+    const m = JSON.parse(jsonMatch[0]);
     
-    const matchResults: MatchResult[] = result.matches
-      .filter((m: { jobIndex: number }) => jobs[m.jobIndex])
-      .map((m: { jobIndex: number; score: number; summary: string; keyMatches: string[] }) => ({
-        job: jobs[m.jobIndex],
-        score: m.score,
-        summary: m.summary,
-        keyMatches: m.keyMatches || [],
-      }));
+    if (!jobs[m.jobIndex]) {
+      throw new Error('Invalid job index');
+    }
 
-    return matchResults.sort((a, b) => b.score - a.score).slice(0, 5);
+    return [{
+      job: jobs[m.jobIndex],
+      score: m.score,
+      summary: m.summary,
+      keyMatches: m.keyMatches || [],
+    }];
   } catch (error) {
     console.error('Analysis error:', error);
     throw new Error('매칭 분석 중 오류가 발생했습니다.');

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 
 interface ExperienceMatchInfo {
   status: 'ideal' | 'perfect' | 'good' | 'acceptable' | 'underqualified' | 'overqualified';
@@ -41,14 +41,13 @@ const LOADING_MESSAGES = [
 ];
 
 export default function Home() {
-  const [file, setFile] = useState<File | null>(null);
+  const [resumeText, setResumeText] = useState('');
   const [currentSalary, setCurrentSalary] = useState<string>('');
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [results, setResults] = useState<MatchResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [dragActive, setDragActive] = useState(false);
 
   // 로딩 메시지 순환
   useEffect(() => {
@@ -61,44 +60,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [loading]);
 
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const droppedFile = e.dataTransfer.files[0];
-      if (droppedFile.name.toLowerCase().endsWith('.pdf')) {
-        setFile(droppedFile);
-        setError(null);
-      } else {
-        setError('PDF 파일만 업로드 가능합니다.');
-      }
-    }
-  }, []);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      if (selectedFile.name.toLowerCase().endsWith('.pdf')) {
-        setFile(selectedFile);
-        setError(null);
-      } else {
-        setError('PDF 파일만 업로드 가능합니다.');
-      }
-    }
-  };
-
   const toggleLocation = (location: string) => {
     setSelectedLocations(prev => 
       prev.includes(location)
@@ -110,8 +71,8 @@ export default function Home() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!file) {
-      setError('이력서 파일을 업로드해주세요.');
+    if (!resumeText || resumeText.trim().length < 50) {
+      setError('이력서 내용을 50자 이상 입력해주세요.');
       return;
     }
 
@@ -121,18 +82,16 @@ export default function Home() {
     setResults(null);
 
     try {
-      const formData = new FormData();
-      formData.append('resume', file);
-      if (currentSalary) {
-        formData.append('currentSalary', currentSalary);
-      }
-      if (selectedLocations.length > 0) {
-        formData.append('preferredLocations', JSON.stringify(selectedLocations));
-      }
-
       const response = await fetch('/api/analyze', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          resumeText: resumeText.trim(),
+          currentSalary: currentSalary ? parseInt(currentSalary) : null,
+          preferredLocations: selectedLocations.length > 0 ? selectedLocations : null,
+        }),
       });
 
       const data = await response.json();
@@ -204,63 +163,27 @@ export default function Home() {
         {/* Upload Form */}
         {!results && (
           <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
-            <div 
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer
-                ${dragActive 
-                  ? 'border-blue-500 bg-blue-50' 
-                  : file 
-                    ? 'border-green-500 bg-green-50' 
-                    : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'
-                }`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => document.getElementById('file-input')?.click()}
-            >
-              <input
-                id="file-input"
-                type="file"
-                accept=".pdf"
-                onChange={handleFileChange}
-                className="hidden"
+            {/* Resume Text Input */}
+            <div>
+              <label htmlFor="resume" className="block text-sm font-medium text-gray-700 mb-2">
+                이력서 내용 붙여넣기
+              </label>
+              <textarea
+                id="resume"
+                value={resumeText}
+                onChange={(e) => setResumeText(e.target.value)}
+                placeholder="원티드 이력서 내용을 복사해서 붙여넣어 주세요.&#10;&#10;예시:&#10;- 경력 사항&#10;- 프로젝트 경험&#10;- 기술 스택&#10;- 자기소개 등"
+                rows={10}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
               />
-              
-              {file ? (
-                <div className="space-y-2">
-                  <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <p className="font-medium text-gray-900">{file.name}</p>
-                  <p className="text-sm text-gray-500">
-                    {(file.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFile(null);
-                    }}
-                    className="text-sm text-red-600 hover:text-red-700"
-                  >
-                    파일 제거
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <div className="w-16 h-16 mx-auto bg-gray-100 rounded-full flex items-center justify-center">
-                    <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="font-medium text-gray-900">PDF 이력서를 드래그하거나 클릭하여 업로드</p>
-                    <p className="text-sm text-gray-500 mt-1">최대 10MB</p>
-                  </div>
-                </div>
-              )}
+              <div className="flex justify-between mt-2 text-sm">
+                <span className="text-gray-500">
+                  {resumeText.length > 0 ? `${resumeText.length}자 입력됨` : '최소 50자 이상 입력해주세요'}
+                </span>
+                {resumeText.length >= 50 && (
+                  <span className="text-green-600">✓ 분석 가능</span>
+                )}
+              </div>
             </div>
 
             {/* Current Salary Input */}
@@ -320,9 +243,9 @@ export default function Home() {
             {/* Submit Button with Loading Animation */}
             <button
               type="submit"
-              disabled={!file || loading}
+              disabled={resumeText.trim().length < 50 || loading}
               className={`w-full mt-6 py-4 rounded-lg font-semibold text-white transition-all relative overflow-hidden
-                ${!file || loading
+                ${resumeText.trim().length < 50 || loading
                   ? loading 
                     ? 'bg-blue-600 cursor-wait'
                     : 'bg-gray-300 cursor-not-allowed'
@@ -362,7 +285,7 @@ export default function Home() {
               <button
                 onClick={() => {
                   setResults(null);
-                  setFile(null);
+                  setResumeText('');
                   setCurrentSalary('');
                   setSelectedLocations([]);
                 }}

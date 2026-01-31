@@ -8,9 +8,10 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   try {
     const base64PDF = buffer.toString('base64');
     
-    const response = await anthropic.messages.create({
+    const response = await anthropic.beta.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 8192,
+      betas: ['pdfs-2024-09-25'],
       messages: [
         {
           role: 'user',
@@ -39,7 +40,10 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
 
     return content.text;
   } catch (error) {
-    console.error('PDF extraction error:', error);
+    console.error('PDF extraction error details:', JSON.stringify(error, null, 2));
+    if (error instanceof Error) {
+      throw new Error(`PDF 처리 오류: ${error.message}`);
+    }
     throw new Error('PDF 파일을 읽는 중 오류가 발생했습니다.');
   }
 }

@@ -74,65 +74,184 @@ function extractCandidateProfile(resumeText: string): CandidateProfile {
   };
 }
 
-// 후보자 직군 추출
+// 후보자 직군 추출 (가중치 기반)
 function extractCandidateJobCategory(resumeText: string): string {
-  const categoryKeywords: { [key: string]: string[] } = {
-    '개발': ['개발', 'developer', 'engineer', '엔지니어', '프로그래머', 'backend', 'frontend', 'fullstack', 'ios', 'android', 'devops'],
-    '기획': ['기획', 'pm', 'po', 'product', '프로덕트', 'planner', '서비스기획'],
-    '디자인': ['디자인', 'designer', 'ux', 'ui', 'graphic', '그래픽'],
-    '데이터': ['데이터', 'data', 'ml', 'ai', '머신러닝', '분석', 'analyst', 'scientist'],
-    '마케팅': ['마케팅', 'marketing', '그로스', 'growth', '퍼포먼스'],
+  const lower = resumeText.toLowerCase();
+  const firstLine = resumeText.split('\n')[0].toLowerCase(); // 첫 줄 (보통 직함)
+  
+  // 1. 첫 줄에서 명시적 직군 확인 (가장 높은 우선순위)
+  if (/pm|po|product|프로덕트|기획/.test(firstLine)) {
+    return '기획';
+  }
+  if (/개발|developer|engineer|엔지니어/.test(firstLine) && !/pm|po|product|기획/.test(firstLine)) {
+    return '개발';
+  }
+  if (/디자인|designer|ux|ui/.test(firstLine)) {
+    return '디자인';
+  }
+  if (/데이터|data|analyst|scientist/.test(firstLine)) {
+    return '데이터';
+  }
+  if (/마케팅|marketing|growth/.test(firstLine)) {
+    return '마케팅';
+  }
+  
+  // 2. 전체 텍스트에서 가중치 기반 추출
+  const categoryScores: { [key: string]: number } = {
+    '기획': 0,
+    '개발': 0,
+    '디자인': 0,
+    '데이터': 0,
+    '마케팅': 0,
   };
   
-  const lower = resumeText.toLowerCase();
-  let maxCount = 0;
-  let bestCategory = '기타';
+  // 기획 (PM/PO) - 높은 가중치
+  const pmKeywords = [
+    { pattern: /product\s*(manager|owner)/gi, weight: 10 },
+    { pattern: /프로덕트\s*(매니저|오너|관리자)/gi, weight: 10 },
+    { pattern: /\bpm\b/gi, weight: 8 },
+    { pattern: /\bpo\b/gi, weight: 8 },
+    { pattern: /서비스\s*기획/gi, weight: 7 },
+    { pattern: /기획자/gi, weight: 6 },
+    { pattern: /프로덕트/gi, weight: 5 },
+    { pattern: /로드맵/gi, weight: 3 },
+    { pattern: /백로그/gi, weight: 3 },
+    { pattern: /PRD|기획서|요구사항/gi, weight: 3 },
+    { pattern: /스프린트/gi, weight: 2 },
+    { pattern: /agile|애자일|스크럼/gi, weight: 2 },
+  ];
   
-  for (const [category, keywords] of Object.entries(categoryKeywords)) {
-    let count = 0;
-    for (const kw of keywords) {
-      const regex = new RegExp(kw, 'gi');
-      const matches = lower.match(regex);
-      if (matches) count += matches.length;
-    }
-    if (count > maxCount) {
-      maxCount = count;
+  for (const { pattern, weight } of pmKeywords) {
+    const matches = lower.match(pattern);
+    if (matches) categoryScores['기획'] += matches.length * weight;
+  }
+  
+  // 개발 - 일반적인 가중치 (PM/PO 키워드가 있으면 가중치 감소)
+  const devKeywords = [
+    { pattern: /개발자/gi, weight: 5 },
+    { pattern: /developer|engineer/gi, weight: 5 },
+    { pattern: /엔지니어/gi, weight: 4 },
+    { pattern: /backend|frontend|풀스택/gi, weight: 4 },
+    { pattern: /코딩|프로그래밍/gi, weight: 3 },
+  ];
+  
+  // PM/PO 관련 키워드가 많으면 개발 가중치 감소
+  const hasPMContext = categoryScores['기획'] > 10;
+  const devMultiplier = hasPMContext ? 0.3 : 1;
+  
+  for (const { pattern, weight } of devKeywords) {
+    const matches = lower.match(pattern);
+    if (matches) categoryScores['개발'] += matches.length * weight * devMultiplier;
+  }
+  
+  // 디자인
+  const designKeywords = [
+    { pattern: /디자이너/gi, weight: 5 },
+    { pattern: /ux\s*디자인/gi, weight: 5 },
+    { pattern: /ui\s*디자인/gi, weight: 5 },
+    { pattern: /figma|sketch/gi, weight: 3 },
+  ];
+  
+  for (const { pattern, weight } of designKeywords) {
+    const matches = lower.match(pattern);
+    if (matches) categoryScores['디자인'] += matches.length * weight;
+  }
+  
+  // 데이터
+  const dataKeywords = [
+    { pattern: /데이터\s*(분석|사이언)/gi, weight: 5 },
+    { pattern: /data\s*(analyst|scientist|engineer)/gi, weight: 5 },
+    { pattern: /머신러닝|ml|딥러닝/gi, weight: 4 },
+  ];
+  
+  for (const { pattern, weight } of dataKeywords) {
+    const matches = lower.match(pattern);
+    if (matches) categoryScores['데이터'] += matches.length * weight;
+  }
+  
+  // 마케팅
+  const marketingKeywords = [
+    { pattern: /마케터|마케팅/gi, weight: 5 },
+    { pattern: /그로스|growth/gi, weight: 4 },
+    { pattern: /퍼포먼스\s*마케팅/gi, weight: 5 },
+  ];
+  
+  for (const { pattern, weight } of marketingKeywords) {
+    const matches = lower.match(pattern);
+    if (matches) categoryScores['마케팅'] += matches.length * weight;
+  }
+  
+  // 최고 점수 카테고리 반환
+  let maxScore = 0;
+  let bestCategory = '기타';
+  for (const [category, score] of Object.entries(categoryScores)) {
+    if (score > maxScore) {
+      maxScore = score;
       bestCategory = category;
     }
   }
   
+  console.log('직군 점수:', categoryScores, '-> 결과:', bestCategory);
   return bestCategory;
 }
 
-// 후보자 직무 추출
+// 후보자 직무 추출 (우선순위 기반)
 function extractCandidateJobRoles(resumeText: string): string[] {
-  const roleKeywords: { [key: string]: string[] } = {
-    '프론트엔드': ['프론트엔드', 'frontend', 'front-end', 'react', 'vue', 'angular', '웹개발'],
-    '백엔드': ['백엔드', 'backend', 'back-end', 'server', '서버', 'spring', 'django', 'node.js', 'express'],
-    'iOS': ['ios', 'swift', 'objective-c'],
-    'Android': ['android', '안드로이드', 'kotlin'],
-    'DevOps': ['devops', 'sre', 'infrastructure', '인프라', 'kubernetes', 'docker'],
-    'PM': ['pm', 'product manager', '프로덕트 매니저', '프로덕트매니저'],
-    'PO': ['po', 'product owner', '프로덕트 오너'],
-    '서비스기획': ['서비스 기획', '서비스기획'],
-    'UX디자인': ['ux', 'ux디자인', '사용자경험'],
-    'UI디자인': ['ui', 'ui디자인', '인터페이스'],
-    '데이터분석': ['데이터 분석', '데이터분석', 'analyst'],
-    'ML엔지니어': ['ml', 'machine learning', '머신러닝', '딥러닝', 'deep learning'],
-  };
-  
   const lower = resumeText.toLowerCase();
+  const firstLines = resumeText.split('\n').slice(0, 5).join(' ').toLowerCase(); // 상단 5줄
+  
   const roles: string[] = [];
   
-  for (const [role, keywords] of Object.entries(roleKeywords)) {
-    for (const kw of keywords) {
-      if (lower.includes(kw)) {
-        if (!roles.includes(role)) roles.push(role);
+  // 1. 상단에서 명시적 직무 확인 (최우선)
+  // PM/PO 우선 체크
+  if (/product\s*(manager|owner)|프로덕트\s*(매니저|오너)|\bpm\b|\bpo\b/i.test(firstLines)) {
+    if (/\bpo\b|product\s*owner|프로덕트\s*오너/i.test(firstLines)) {
+      roles.push('PO');
+    }
+    if (/\bpm\b|product\s*manager|프로덕트\s*매니저/i.test(firstLines)) {
+      roles.push('PM');
+    }
+  }
+  
+  // 서비스 기획 체크
+  if (/서비스\s*기획|기획자/i.test(firstLines) && roles.length === 0) {
+    roles.push('서비스기획');
+  }
+  
+  // 2. PM/PO가 이미 발견되었으면 개발 직무는 추가하지 않음
+  const isPMPO = roles.includes('PM') || roles.includes('PO') || roles.includes('서비스기획');
+  
+  // 3. 전체 텍스트에서 직무 추출
+  const roleKeywords: { [key: string]: { patterns: RegExp[], priority: number } } = {
+    'PM': { patterns: [/\bpm\b/i, /product\s*manager/i, /프로덕트\s*매니저/i], priority: 10 },
+    'PO': { patterns: [/\bpo\b/i, /product\s*owner/i, /프로덕트\s*오너/i], priority: 10 },
+    '서비스기획': { patterns: [/서비스\s*기획/i, /기획자/i], priority: 9 },
+    '프론트엔드': { patterns: [/프론트엔드/i, /frontend/i, /front-end/i], priority: 5 },
+    '백엔드': { patterns: [/백엔드/i, /backend/i, /back-end/i], priority: 5 },
+    'iOS': { patterns: [/\bios\b/i, /\bswift\b/i], priority: 5 },
+    'Android': { patterns: [/android/i, /안드로이드/i], priority: 5 },
+    'DevOps': { patterns: [/devops/i, /sre\b/i, /인프라/i], priority: 5 },
+    'UX디자인': { patterns: [/ux\s*디자인/i, /ux\s*designer/i], priority: 6 },
+    'UI디자인': { patterns: [/ui\s*디자인/i, /ui\s*designer/i], priority: 6 },
+    '데이터분석': { patterns: [/데이터\s*분석/i, /data\s*analyst/i], priority: 6 },
+    'ML엔지니어': { patterns: [/ml\s*엔지니어/i, /머신러닝/i, /machine\s*learning/i], priority: 6 },
+  };
+  
+  for (const [role, config] of Object.entries(roleKeywords)) {
+    if (roles.includes(role)) continue;
+    
+    // PM/PO면 개발 직무 스킵
+    if (isPMPO && config.priority <= 5) continue;
+    
+    for (const pattern of config.patterns) {
+      if (pattern.test(lower)) {
+        roles.push(role);
         break;
       }
     }
   }
   
+  console.log('추출된 직무:', roles);
   return roles;
 }
 
@@ -711,7 +830,8 @@ function calculateMultiDimensionalScore(
     if (relatedCategories[profile.jobCategory]?.includes(jobCategory)) {
       breakdown.jobCategory = { score: 15, reason: `${profile.jobCategory}와 ${jobCategory}은 연관 직군` };
     } else {
-      breakdown.jobCategory = { score: 5, reason: `직군이 다름 (${profile.jobCategory} → ${jobCategory})` };
+      // 직군 불일치 - 더 강한 감점 (기획자에게 개발 추천 방지)
+      breakdown.jobCategory = { score: 0, reason: `직군 불일치 (${profile.jobCategory} ≠ ${jobCategory})` };
     }
   } else {
     breakdown.jobCategory = { score: 10, reason: '직군 정보 불명확' };
@@ -719,40 +839,58 @@ function calculateMultiDimensionalScore(
   
   // 2. 직무 매칭 (25점 만점)
   const jobRole = (job as JobPosting & { jobRole?: string }).jobRole || '기타';
-  const roleMatched = profile.jobRoles.some(r => 
-    r.toLowerCase() === jobRole.toLowerCase() || 
-    jobRole.toLowerCase().includes(r.toLowerCase()) ||
-    r.toLowerCase().includes(jobRole.toLowerCase())
-  );
   
-  if (roleMatched) {
-    breakdown.jobRole = { score: 25, reason: `${jobRole} 직무 경험 보유` };
-  } else if (profile.jobRoles.length > 0) {
-    // 관련 직무 체크
-    const relatedRoles: Record<string, string[]> = {
-      '프론트엔드': ['풀스택', 'UI디자인'],
-      '백엔드': ['풀스택', 'DevOps'],
-      '풀스택': ['프론트엔드', '백엔드'],
-      'PM': ['PO', '서비스기획'],
-      'PO': ['PM', '서비스기획'],
-      '서비스기획': ['PM', 'PO'],
-      'UX디자인': ['UI디자인', '프론트엔드'],
-      'UI디자인': ['UX디자인'],
-      '데이터분석': ['ML엔지니어', '데이터엔지니어'],
-      'ML엔지니어': ['데이터분석', '데이터엔지니어'],
-    };
-    
-    const hasRelated = profile.jobRoles.some(r => 
-      relatedRoles[r]?.includes(jobRole) || relatedRoles[jobRole]?.includes(r)
+  // PM/PO와 개발 직무 간 매칭 체크
+  const isPMPOCandidate = profile.jobRoles.some(r => ['PM', 'PO', '서비스기획'].includes(r));
+  const isDevJob = ['프론트엔드', '백엔드', 'iOS', 'Android', 'DevOps', 'QA', '풀스택'].includes(jobRole);
+  const isPMPOJob = ['PM', 'PO', '서비스기획'].includes(jobRole);
+  const isDevCandidate = profile.jobRoles.some(r => ['프론트엔드', '백엔드', 'iOS', 'Android', 'DevOps'].includes(r));
+  
+  // PM/PO 후보자에게 개발 공고 추천 방지
+  if (isPMPOCandidate && isDevJob) {
+    breakdown.jobRole = { score: 0, reason: `직무 불일치 (${profile.jobRoles[0]} → ${jobRole} 개발직)` };
+  } 
+  // 개발자에게 PM/PO 공고 추천 방지
+  else if (isDevCandidate && !isPMPOCandidate && isPMPOJob) {
+    breakdown.jobRole = { score: 0, reason: `직무 불일치 (${profile.jobRoles[0]} 개발 → ${jobRole} 기획)` };
+  }
+  // 정상 매칭 체크
+  else {
+    const roleMatched = profile.jobRoles.some(r => 
+      r.toLowerCase() === jobRole.toLowerCase() || 
+      jobRole.toLowerCase().includes(r.toLowerCase()) ||
+      r.toLowerCase().includes(jobRole.toLowerCase())
     );
     
-    if (hasRelated) {
-      breakdown.jobRole = { score: 15, reason: `관련 직무 경험 (${profile.jobRoles[0]} → ${jobRole})` };
+    if (roleMatched) {
+      breakdown.jobRole = { score: 25, reason: `${jobRole} 직무 경험 보유` };
+    } else if (profile.jobRoles.length > 0) {
+      // 관련 직무 체크
+      const relatedRoles: Record<string, string[]> = {
+        '프론트엔드': ['풀스택', 'UI디자인'],
+        '백엔드': ['풀스택', 'DevOps'],
+        '풀스택': ['프론트엔드', '백엔드'],
+        'PM': ['PO', '서비스기획'],
+        'PO': ['PM', '서비스기획'],
+        '서비스기획': ['PM', 'PO'],
+        'UX디자인': ['UI디자인', '프론트엔드'],
+        'UI디자인': ['UX디자인'],
+        '데이터분석': ['ML엔지니어', '데이터엔지니어'],
+        'ML엔지니어': ['데이터분석', '데이터엔지니어'],
+      };
+      
+      const hasRelated = profile.jobRoles.some(r => 
+        relatedRoles[r]?.includes(jobRole) || relatedRoles[jobRole]?.includes(r)
+      );
+      
+      if (hasRelated) {
+        breakdown.jobRole = { score: 15, reason: `관련 직무 경험 (${profile.jobRoles[0]} → ${jobRole})` };
+      } else {
+        breakdown.jobRole = { score: 3, reason: `직무 전환 필요 (${profile.jobRoles[0] || '미상'} → ${jobRole})` };
+      }
     } else {
-      breakdown.jobRole = { score: 5, reason: `직무 전환 필요 (${profile.jobRoles[0] || '미상'} → ${jobRole})` };
+      breakdown.jobRole = { score: 10, reason: '직무 정보 불명확' };
     }
-  } else {
-    breakdown.jobRole = { score: 10, reason: '직무 정보 불명확' };
   }
   
   // 3. 경력 매칭 (20점 만점)
@@ -1112,6 +1250,54 @@ ${jobsContext}
 
   } catch (error) {
     console.error('Analysis error:', error);
-    throw new Error('매칭 분석 중 오류가 발생했습니다.');
+    
+    // API 호출 실패 시 다차원 점수 기반 폴백 결과 반환
+    console.log('API 실패, 다차원 점수 기반 폴백 결과 생성');
+    
+    const fallbackResults: MatchResult[] = topJobs.slice(0, 10).map(item => {
+      const job = item.job;
+      const multiScore = item.multiScore;
+      const reqExp = extractRequiredExperience(job);
+      const expMatch = getExperienceMatch(candidateExperience, reqExp);
+      const salary = estimateSalaryRange(job, candidateExperience);
+      
+      // 다차원 점수를 100점 만점 기준으로 변환
+      const adjustedScore = Math.max(50, Math.min(89, Math.round(multiScore.total * 0.9)));
+      
+      const hookMessages = [
+        `${job.company}에서 당신을 기다리고 있어요`,
+        `이 포지션, 딱 맞는 것 같아요`,
+        `당신의 경험이 빛날 자리예요`,
+      ];
+      const hookMessage = hookMessages[Math.floor(Math.random() * hookMessages.length)];
+      
+      let experienceWarning = null;
+      if (expMatch.status === 'underqualified') {
+        experienceWarning = { type: 'significant' as const, message: expMatch.message };
+      } else if (expMatch.status === 'overqualified') {
+        experienceWarning = { type: 'slight' as const, message: expMatch.message };
+      }
+      
+      const detailedReasons = generateDetailedReasons(candidateProfile, job, multiScore);
+      
+      return {
+        job,
+        score: adjustedScore,
+        topPercent: scoreToTopPercent(adjustedScore),
+        summary: `${job.company}의 ${job.title} 포지션입니다.`,
+        keyMatches: Object.values(multiScore.breakdown)
+          .filter(b => b.score >= 15)
+          .map(b => b.reason)
+          .slice(0, 3),
+        experienceMatch: expMatch,
+        estimatedSalary: salary,
+        salaryRange: `${salary.min}만 ~ ${salary.max}만원`,
+        hookMessage,
+        matchReasons: detailedReasons,
+        experienceWarning,
+      };
+    });
+    
+    return fallbackResults.sort((a, b) => b.score - a.score);
   }
 }

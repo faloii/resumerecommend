@@ -296,7 +296,17 @@ export default function Home() {
 
               {error && (
                 <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-red-600 text-sm">{error}</p>
+                  <p className="text-red-600 text-sm mb-3">{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setError(null);
+                      handleSubmit(new Event('submit') as unknown as React.FormEvent);
+                    }}
+                    className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    🔄 다시 시도
+                  </button>
                 </div>
               )}
 

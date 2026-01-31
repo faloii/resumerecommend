@@ -191,9 +191,9 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* AI 추천 이유 */}
+                {/* 원티드 추천 이유 */}
                 <div className="bg-blue-50 rounded-xl p-6 mb-6">
-                  <p className="text-sm font-semibold text-blue-900 mb-2">AI 추천 이유</p>
+                  <p className="text-sm font-semibold text-blue-900 mb-2">원티드 추천 이유</p>
                   <p className="text-blue-800">{result.summary}</p>
                 </div>
 
@@ -238,3 +238,4 @@ export default function Home() {
     </main>
   );
 }
+

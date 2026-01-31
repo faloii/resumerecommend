@@ -147,7 +147,7 @@ export default function Home() {
             </h2>
             <p className="text-gray-600 max-w-xl mx-auto">
               PDF 이력서를 업로드하면 AI가 원티드 채용 공고 중<br />
-              나와 가장 잘 맞는 Top 10 공고를 분석해 드립니다.
+              나와 가장 잘 맞는 Top 5 공고를 분석해 드립니다.
             </p>
           </div>
         )}
@@ -262,7 +262,7 @@ export default function Home() {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">매칭 결과</h2>
-                <p className="text-gray-600">AI가 분석한 Top 10 추천 공고입니다.</p>
+                <p className="text-gray-600">AI가 분석한 Top 5 추천 공고입니다.</p>
               </div>
               <button
                 onClick={() => {
@@ -385,3 +385,4 @@ export default function Home() {
     </main>
   );
 }
+

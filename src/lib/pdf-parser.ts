@@ -25,7 +25,19 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
             },
             {
               type: 'text',
-              text: '이 PDF는 이력서입니다. 이력서의 모든 내용을 텍스트로 추출해주세요. 이름, 연락처, 경력사항, 학력, 기술스택, 자격증, 프로젝트 경험 등을 구조화된 형태로 정리해주세요.',
+              text: `이 PDF는 이력서입니다. 이력서의 모든 내용을 텍스트로 추출해주세요.
+
+다음 정보를 포함해서 구조화된 형태로 정리해주세요:
+- 이름
+- 연락처 (이메일, 전화번호)
+- 경력 사항 (회사명, 직책, 기간, 주요 업무)
+- 학력
+- 기술 스택 / 스킬
+- 자격증
+- 프로젝트 경험
+- 기타 특이사항
+
+원본 내용을 최대한 보존하면서 정리해주세요.`,
             },
           ],
         },
@@ -38,9 +50,8 @@ export async function extractTextFromPDF(buffer: Buffer): Promise<string> {
     }
 
     return content.text;
-  } catch (error: unknown) {
+  } catch (error) {
     console.error('PDF extraction error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    throw new Error('PDF 처리 오류: ' + errorMessage);
+    throw new Error('PDF 파일을 읽는 중 오류가 발생했습니다.');
   }
 }

@@ -2,18 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { crawlWantedJobs } from '@/lib/crawler';
 import { analyzeMatches } from '@/lib/analyzer';
 
-export const maxDuration = 60; // Vercel 함수 타임아웃 60초
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const resumeText = body.resumeText;
-    const currentSalary = body.currentSalary || null;
-    const preferredLocations = body.preferredLocations || [];
+    const { resumeText, currentSalary } = body;
 
-    if (!resumeText || resumeText.trim().length < 50) {
+    if (!resumeText || resumeText.trim().length < 30) {
       return NextResponse.json(
-        { error: '이력서 내용을 50자 이상 입력해주세요.' },
+        { error: '이력서 내용을 30자 이상 입력해주세요.' },
         { status: 400 }
       );
     }
@@ -28,8 +26,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Claude API로 매칭 분석 (원티드 합격 요소 기반)
-    const matches = await analyzeMatches(resumeText, jobs, preferredLocations, currentSalary);
+    // Claude API로 매칭 분석
+    const matches = await analyzeMatches(resumeText, jobs, [], currentSalary);
 
     return NextResponse.json({
       success: true,

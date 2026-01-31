@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 interface MatchResult {
   job: {
@@ -53,19 +53,30 @@ const SALARY_OPTIONS = [
 ];
 
 const LOADING_MESSAGES = [
-  '이력서를 분석하고 있어요...',
-  '적합한 공고를 찾고 있어요...',
-  '매칭 점수를 계산하고 있어요...',
-  '거의 다 됐어요!',
+  '이력서 분석 중',
+  '적합한 공고 탐색 중',
+  '매칭 점수 계산 중',
+  '거의 완료!',
 ];
 
 export default function Home() {
   const [resumeText, setResumeText] = useState('');
   const [currentSalary, setCurrentSalary] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [loadingMessage, setLoadingMessage] = useState(LOADING_MESSAGES[0]);
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0);
   const [result, setResult] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // 로딩 메시지 순환
+  useEffect(() => {
+    if (!loading) return;
+    
+    const interval = setInterval(() => {
+      setLoadingMessageIndex((prev) => (prev + 1) % LOADING_MESSAGES.length);
+    }, 2500);
+    
+    return () => clearInterval(interval);
+  }, [loading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,14 +89,7 @@ export default function Home() {
     setLoading(true);
     setError(null);
     setResult(null);
-    setLoadingMessage(LOADING_MESSAGES[0]);
-
-    // 로딩 메시지 순환
-    let messageIndex = 0;
-    const messageInterval = setInterval(() => {
-      messageIndex = (messageIndex + 1) % LOADING_MESSAGES.length;
-      setLoadingMessage(LOADING_MESSAGES[messageIndex]);
-    }, 3000);
+    setLoadingMessageIndex(0);
 
     try {
       const response = await fetch('/api/analyze', {
@@ -109,7 +113,6 @@ export default function Home() {
     } catch (err) {
       setError(err instanceof Error ? err.message : '오류가 발생했습니다.');
     } finally {
-      clearInterval(messageInterval);
       setLoading(false);
     }
   };
@@ -131,36 +134,7 @@ export default function Home() {
       </header>
 
       <div className="max-w-3xl mx-auto px-4 py-12">
-        {/* 로딩 화면 */}
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="relative w-20 h-20 mb-8">
-              <div className="absolute inset-0 rounded-full border-4 border-blue-200"></div>
-              <div className="absolute inset-0 rounded-full border-4 border-blue-600 border-t-transparent animate-spin"></div>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-2xl">🔍</span>
-              </div>
-            </div>
-            <p className="text-xl font-semibold text-gray-800 mb-2">{loadingMessage}</p>
-            <p className="text-sm text-gray-500">최대 30초 정도 소요될 수 있어요</p>
-            
-            {/* 프로그레스 바 */}
-            <div className="w-64 mt-6 bg-gray-200 rounded-full h-1.5 overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full animate-pulse" 
-                   style={{ width: '100%', animation: 'loading 2s ease-in-out infinite' }}></div>
-            </div>
-            
-            <style jsx>{`
-              @keyframes loading {
-                0% { transform: translateX(-100%); }
-                50% { transform: translateX(0%); }
-                100% { transform: translateX(100%); }
-              }
-            `}</style>
-          </div>
-        )}
-
-        {!result && !loading && (
+        {!result && (
           <>
             <div className="text-center mb-10">
               <h2 className="text-4xl font-bold text-gray-900 mb-4">
@@ -178,6 +152,7 @@ export default function Home() {
                 onChange={(e) => setResumeText(e.target.value)}
                 placeholder="이력서 내용을 붙여넣기 해주세요.&#10;&#10;예시:&#10;- 경력: 프론트엔드 개발자 3년&#10;- 기술: React, TypeScript, Next.js&#10;- 학력: 컴퓨터공학 전공"
                 className="w-full h-64 p-4 border-2 border-gray-200 rounded-xl focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none resize-none text-gray-800"
+                disabled={loading}
               />
               
               <p className="mt-2 text-sm text-gray-500 text-right">
@@ -196,6 +171,7 @@ export default function Home() {
                   value={currentSalary}
                   onChange={(e) => setCurrentSalary(Number(e.target.value))}
                   className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                  disabled={loading}
                 >
                   {SALARY_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -211,22 +187,49 @@ export default function Home() {
                 </div>
               )}
 
+              {/* 버튼 - 로딩 애니메이션 */}
               <button
                 type="submit"
                 disabled={resumeText.trim().length < 30 || loading}
-                className={`w-full mt-6 py-4 rounded-xl font-bold text-lg transition-all
-                  ${resumeText.trim().length < 30 || loading
+                className={`relative w-full mt-6 py-4 rounded-xl font-bold text-lg transition-all overflow-hidden
+                  ${resumeText.trim().length < 30
                     ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
+                    : loading
+                      ? 'bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 text-white cursor-wait'
+                      : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg'
                   }`}
+                style={loading ? { backgroundSize: '200% 100%', animation: 'shimmer 1.5s infinite linear' } : {}}
               >
-                내 맞춤 공고 찾기
+                {loading ? (
+                  <span className="flex items-center justify-center gap-3">
+                    <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    <span className="inline-block min-w-[140px]">{LOADING_MESSAGES[loadingMessageIndex]}...</span>
+                  </span>
+                ) : (
+                  '내 맞춤 공고 찾기'
+                )}
               </button>
+              
+              {loading && (
+                <p className="mt-3 text-center text-sm text-gray-500">
+                  최대 30초 정도 소요될 수 있어요
+                </p>
+              )}
+
+              <style jsx>{`
+                @keyframes shimmer {
+                  0% { background-position: 100% 0; }
+                  100% { background-position: -100% 0; }
+                }
+              `}</style>
             </form>
           </>
         )}
 
-        {result && !loading && (
+        {result && (
           <div className="space-y-6">
             {/* 핏 메시지 */}
             <div className="text-center">
@@ -369,4 +372,3 @@ export default function Home() {
     </main>
   );
 }
-

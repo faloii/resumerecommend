@@ -25,6 +25,7 @@ interface MatchResult {
     type: 'match' | 'slight' | 'significant';
     message: string;
   } | null;
+  locationMismatch: boolean;
 }
 
 function getTopPercent(score: number): number {
@@ -51,9 +52,24 @@ const SALARY_OPTIONS = [
   { value: 15000, label: '1억 5,000만원 이상' },
 ];
 
+const LOCATION_OPTIONS = [
+  { value: '', label: '선택 안함' },
+  { value: '서울', label: '서울' },
+  { value: '경기', label: '경기' },
+  { value: '인천', label: '인천' },
+  { value: '부산', label: '부산' },
+  { value: '대구', label: '대구' },
+  { value: '대전', label: '대전' },
+  { value: '광주', label: '광주' },
+  { value: '세종', label: '세종' },
+  { value: '제주', label: '제주' },
+  { value: '원격', label: '원격근무' },
+];
+
 export default function Home() {
   const [resumeText, setResumeText] = useState('');
   const [currentSalary, setCurrentSalary] = useState(0);
+  const [preferredLocation, setPreferredLocation] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -76,7 +92,8 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           resumeText,
-          currentSalary: currentSalary > 0 ? currentSalary : null
+          currentSalary: currentSalary > 0 ? currentSalary : null,
+          preferredLocation: preferredLocation || null
         }),
       });
 
@@ -137,25 +154,47 @@ export default function Home() {
                 {resumeText.length}자 입력됨
               </p>
 
-              {/* 현재 연봉 선택 */}
-              <div className="mt-6 p-4 bg-gray-50 rounded-xl">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  현재 연봉 <span className="text-gray-400 font-normal">(선택)</span>
-                </label>
-                <p className="text-xs text-gray-500 mb-3">
-                  입력하시면 현재 연봉 이상의 포지션만 추천해드려요
-                </p>
-                <select
-                  value={currentSalary}
-                  onChange={(e) => setCurrentSalary(Number(e.target.value))}
-                  className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
-                >
-                  {SALARY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+              {/* 추가 옵션 */}
+              <div className="mt-6 p-4 bg-gray-50 rounded-xl space-y-4">
+                <p className="text-sm font-medium text-gray-700">추가 옵션 <span className="text-gray-400 font-normal">(선택)</span></p>
+                
+                {/* 현재 연봉 */}
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    현재 연봉
+                  </label>
+                  <select
+                    value={currentSalary}
+                    onChange={(e) => setCurrentSalary(Number(e.target.value))}
+                    className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-sm"
+                  >
+                    {SALARY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">입력하시면 현재 연봉 이상의 포지션만 추천해드려요</p>
+                </div>
+
+                {/* 희망 근무지 */}
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">
+                    희망 근무지
+                  </label>
+                  <select
+                    value={preferredLocation}
+                    onChange={(e) => setPreferredLocation(e.target.value)}
+                    className="w-full p-3 border border-gray-200 rounded-lg bg-white text-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none text-sm"
+                  >
+                    {LOCATION_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 mt-1">근무지가 다른 경우 안내해드려요</p>
+                </div>
               </div>
 
               {error && (
@@ -223,7 +262,7 @@ export default function Home() {
               <div className="p-8">
                 {/* 경력 미스매치 경고 */}
                 {result.experienceWarning && (
-                  <div className={`rounded-xl p-4 mb-6 flex items-start gap-3 ${
+                  <div className={`rounded-xl p-4 mb-4 flex items-start gap-3 ${
                     result.experienceWarning.type === 'slight' 
                       ? 'bg-yellow-50 border border-yellow-200' 
                       : 'bg-orange-50 border border-orange-200'
@@ -249,6 +288,18 @@ export default function Home() {
                   </div>
                 )}
 
+                {/* 근무지 미스매치 경고 */}
+                {result.locationMismatch && (
+                  <div className="rounded-xl p-4 mb-4 flex items-start gap-3 bg-purple-50 border border-purple-200">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 bg-purple-200">
+                      <span className="text-sm text-purple-700">📍</span>
+                    </div>
+                    <p className="text-sm text-purple-800">
+                      근무지 확인 필요 - 희망 근무지와 공고 위치가 달라요. 원격근무 여부를 확인해보세요.
+                    </p>
+                  </div>
+                )}
+
                 {/* 공고 정보 */}
                 <div className="bg-gray-50 rounded-xl p-6 mb-6">
                   <p className="text-sm text-gray-500 mb-1">추천 공고</p>
@@ -261,7 +312,14 @@ export default function Home() {
                     <div className="w-px h-10 bg-gray-300"></div>
                     <div>
                       <p className="text-sm text-gray-500">위치</p>
-                      <p className="text-lg font-semibold text-gray-700">{result.job.location}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-lg font-semibold text-gray-700">{result.job.location}</p>
+                        {result.locationMismatch && (
+                          <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-medium">
+                            확인 필요
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
